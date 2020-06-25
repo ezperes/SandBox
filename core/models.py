@@ -26,7 +26,7 @@ class Broker(models.Model):
 
 class Asset(models.Model):
     symbol = models.CharField(max_length=30)
-    description = models.CharField(max_length=60)
+    name = models.CharField(max_length=60)
     asset_type = models.CharField(max_length=10, choices=ASSET_TYPES)
     root = models.BooleanField(default=True)
     root_asset = models.ForeignKey('self', null=True, on_delete=models.CASCADE, related_name='derived_assets')
