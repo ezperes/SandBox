@@ -47,7 +47,7 @@ def populate(model: Model, items: list, uniqueness=None, label: str = None) -> N
     else:
         raise_err()
 
-    # 3. Populates Stores items' data
+    # 3. Stores items' data
     print("Populating...")
     for i, entry in enumerate(items):
         print("-" * 50)

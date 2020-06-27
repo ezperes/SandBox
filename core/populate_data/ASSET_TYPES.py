@@ -1,7 +1,7 @@
 """Simple Enumeration of Asset Types"""
 
 ASSET_TYPES = [
-    ('curr', 'Currency'),
+    ('fiat', 'Fiat Currency'),
     ('crypto', 'Cryptocurrency'),
-    ('futures', 'Future'),
+    ('futures', 'Future Contracts'),
 ]

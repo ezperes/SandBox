@@ -1,0 +1,10 @@
+#!/bin/sh
+
+read -p "Eliminar e recriar bancos de dados e migrations? [Y/N] " resp
+
+if [ $resp == 'y' ] || [ $resp == 'Y' ]
+then
+  . purge_db.sh
+else
+  echo 'Exiting...'
+fi

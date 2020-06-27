@@ -2,16 +2,16 @@ ASSETS = (
     {
         'symbol': 'USD',
         'name': 'United States Dollar',
-        'asset_type': 'curr',
+        'asset_type': 'fiat',
     },
     {
         'symbol': 'BRL',
         'name': 'Brazilian Real',
-        'asset_type': 'curr',
+        'asset_type': 'fiat',
     },
     {
         'symbol': 'EUR',
         'name': 'Euro',
-        'asset_type': 'curr',
+        'asset_type': 'fiat',
     },
 )

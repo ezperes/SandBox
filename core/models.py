@@ -25,7 +25,7 @@ class Broker(models.Model):
 
 
 class Asset(models.Model):
-    symbol = models.CharField(max_length=30)
+    symbol = models.CharField(max_length=30, unique=True)
     name = models.CharField(max_length=60)
     asset_type = models.CharField(max_length=10, choices=ASSET_TYPES)
     root = models.BooleanField(default=True)
