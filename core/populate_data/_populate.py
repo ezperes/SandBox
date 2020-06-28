@@ -2,6 +2,7 @@ from django.db.models import Model
 from django.db.models.query_utils import DeferredAttribute
 from pprint import pprint
 
+
 def populate(model: Model, items: list, uniqueness=None, label: str = None) -> None:
     """Populates a model database with a given set of dictionary data
             uniqueness is a mandatory and is the uniqueness field criterion
@@ -57,7 +58,7 @@ def populate(model: Model, items: list, uniqueness=None, label: str = None) -> N
         ordinary_fields = dict()
         for field, value in entry.items():
             print(" "*8, "Field: %s \n" % field,
-                  " "*12, "Value: %s" % (value))
+                  " "*12, "Value: %s" % value)
             if field in uniqueness_names:
                 unique_fields[field] = value
             else:

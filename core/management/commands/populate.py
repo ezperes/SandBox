@@ -1,11 +1,13 @@
 """
-    Command line django-admin. Populates database with pre-chosen exchanges data
+    Command line django-admin.
+    Populates database with pre-chosen exchanges data
     source: https://docs.djangoproject.com/en/3.0/howto/custom-management-commands/
 """
 
 from django.core.management.base import BaseCommand, CommandError
 from core.populate_data.populates import populate_all, populate_exchanges, populate_brokers, \
     populate_assets
+
 
 class Command(BaseCommand):
     help = 'Populates database with chosen data'
@@ -20,15 +22,17 @@ class Command(BaseCommand):
             populate_all()
         else:
             print("Entities required: %s" % options['entities'])
-            for raw_option in options['entities']:
-                option = raw_option.strip().lower()
-                print("Raw option: %s" % raw_option)
-                print("Proccessed option: %s" % option)
-                print("Detected option(s):")
-                if option == 'all':
-                    print("Processing all entities.")
-                    populate_all()
-                else:
+
+            # Pre-proccesses options
+            options = [raw_option.strip().lower() for raw_option in options['entities']]
+
+            # Iterates options
+            if 'all' in options:
+                print("Processing all entities.")
+                populate_all()
+            else:
+                for option in options:
+                    print("Proccessing option: %s." % option)
                     if option == 'asset' or option == 'assets':
                         print("\tProcessing Assets")
                         populate_assets()
@@ -38,3 +42,5 @@ class Command(BaseCommand):
                     elif option == 'exchange' or option == 'exchanges':
                         print("\tProcessing Exchanges")
                         populate_exchanges()
+                    else:
+                        print("%s is not expected." % option)

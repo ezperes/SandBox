@@ -18,6 +18,13 @@ perpetual_testnet_eduardo = {
     'url': 'https://testnet.binancefuture.com'
 }
 
+perpetual_eduardo = {
+    'api_key': '96bMhGS6lGKvdPsC7d8KHkqj9KMHvlSKpNaagzqkMbZrN2a64KsQ0rlMycLLgtax',
+    'secret_key': '4yCB7pDKRb82mpl44s8165US3MCNOuFwsSrbUEF0O4HQJJAWRRHWDy5fxun8UQR3',
+    'url': 'https://testnet.binancefuture.com'
+}
+
+
 request_client = RequestClient(**perpetual_testnet_eduardo)
 exchange_info = request_client.get_exchange_information()
 

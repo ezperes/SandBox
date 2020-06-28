@@ -74,11 +74,19 @@ WSGI_APPLICATION = 'Sandbox.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/3.0/ref/settings/#databases
 
+CORE_PATH = 'core'
+
+EXCHANGES_PATH = 'exchanges'
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
-    }
+        'NAME': os.path.join(BASE_DIR, 'main.sqlite3'),
+    },
+    'binance': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': os.path.join(BASE_DIR, CORE_PATH, EXCHANGES_PATH, 'binance.sqlite3'),
+    },
 }
 
 
