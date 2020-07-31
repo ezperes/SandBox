@@ -5,14 +5,14 @@ from pprint import pprint
 
 def populate(model: Model, items: list, uniqueness=None, label: str = None) -> None:
     """Populates a model database with a given set of dictionary data
-            uniqueness is a mandatory and is the uniqueness field criterion
+            uniqueness is a mandatory argument and is the uniqueness field criterion
                 can contain field objects or field name strings,  or list of these
             label is for console prompt info only
     """
 
     def raise_err():
         raise ValueError("Uniqueness must be a django.db.models.query_utils.Deferred\
-                            Attribute(field), a name of a field, or a list of such objects.")
+                            Attribute(field), a string name of a field, or a list of such objects.")
 
     # 1. Initialization
     print("="*80)
@@ -21,7 +21,7 @@ def populate(model: Model, items: list, uniqueness=None, label: str = None) -> N
     # 2. Validates and transforms inputs
 
     # 2.1 If uniqueness exists, validates and tranforms it
-    if uniqueness is not None or uniqueness:
+    if uniqueness:
         print("Validating inputs", end="... ")
         # 2.1.1 uniqueness must be a Field instante or list of Fields
         if isinstance(uniqueness, DeferredAttribute):
@@ -36,6 +36,8 @@ def populate(model: Model, items: list, uniqueness=None, label: str = None) -> N
                     print(unique, " is a string (hope it corresponds to a field name).")
                 else:
                     raise_err()
+        else:
+            raise_err()
 
         # 2.1.2 Transforms Uniqueness
         if isinstance(uniqueness, str):
