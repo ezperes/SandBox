@@ -5,3 +5,4 @@ __pycache__/
 migrations/
 .DS_Store
 weasel/t*.txt
+/Indicators/Testes.xlsx
