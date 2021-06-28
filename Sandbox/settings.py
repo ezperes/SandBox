@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'core',
+    'MQL5_Integration',
 ]
 
 MIDDLEWARE = [
@@ -87,6 +88,17 @@ DATABASES = {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': os.path.join(BASE_DIR, CORE_PATH, EXCHANGES_PATH, 'binance.sqlite3'),
     },
+    'market_data_hub': {
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': 'DCBE_DB',
+        'USER': 'eduardozp',
+        'PASSWORD': 'senhA1981!',
+        'HOST': 'localhost',
+        'PORT': '3306',
+        'OPTIONS': {
+            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+        }
+    },
 }
 
 
@@ -127,4 +139,3 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/3.0/howto/static-files/
 
 STATIC_URL = '/static/' #
-q# TODO expandir este modulo
