@@ -18,7 +18,7 @@ with open('core/populate_data/ASSETS.json', 'r') as test_file:
 from core.populate_data import ASSETS
 
 def retrieve_name(var):
-    return f'{var=}'.split('=')[0]
+    return f'{var}'.split('=')[0]
 
 
 print(retrieve_name(ASSETS))
