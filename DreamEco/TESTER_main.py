@@ -34,7 +34,7 @@ class TEST_Environment(RunTimeEnvironment):
             self.agents.spawn(chosen_class, i)
 
     def print_agents(self):
-        for agent in self.agents.agents.values():
+        for agent in self.agents._agents.values():
             agent.meth()
 
 

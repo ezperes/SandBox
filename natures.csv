@@ -1,0 +1,34 @@
+Id;Name;Definition
+1;Overlord;"
+    Overlord is the main Agent of the TradeEcosystem.
+    
+    It is responsible to get data from outer world, turns it into information, 
+    and bring such information into intelligence.
+    Coordinates, from the long-term and short-term strategic scope, the actions 
+    of subordinated agents, so each agent tends to accomplish not only their individuals 
+    objectives, but also the collective overall objetcive."
+2;Guardian Angel;"
+    Guardian Angel is responsible to make to happen a specific set of risk/goal policy.
+    
+    Given a set of integrated risk/goal rules, such set is taken by the Guardian Angel, who 
+    is in charge to spawn the required subordinated agents and hadles their individual goals 
+    in terms of risk and objectives."
+3;GEEEne;"
+    Genetic Evolutionary Environment Engine - GEEEne
+    
+    The virtual environment in which the intermediate metaheurisc process (evolutionary) happens.
+    GEEEne - Genetic Evolutionary Environment Engine - is the component of TradeEco responsible to perform 
+    the intermediate metaheuristics activity within TradeEco's automatic trading metaheuristis chain, 
+    by deploying a virtual environment which provides means for the emerging of the 
+    most suitable trade setups within a given market state."
+4;Trader Agent;"
+    Trader Agent is the elementary component of TradeEco.
+    
+    It is the genetic individual acting according to its genetic contruction information (genotype), and its own
+    adaptations according to environment circumstances (phenotype). Its activity log feeds the database to which the
+    Overlord shall reccur to so it can construct its genetic data bank. 
+         "
+5;The Newbie;I'm a menace to the status quo
+6;The enlgihted;The adversarial
+7;Youngster;Catarrento.
+8;Lazarento;Gaiteiro.

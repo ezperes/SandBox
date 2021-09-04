@@ -31,5 +31,3 @@ class DreamBaseClass:
         # Creates alias for verbose method
         self.verbose = self._verbosity.verbose
 
-
-baseobj = DreamBaseClass()
