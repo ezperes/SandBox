@@ -29,7 +29,7 @@ The RTEnv is composed by HANDLERS, SENSORS and ACTUATORS
 """
 
 # Imports
-from .main import RunTimeEnvironment
+# from .main import RunTimeEnvironment
 # from M0000_RTEnvironment.M00000_AgentsHandler import AgentsHandler
 # from M0000_RTEnvironment.M00001_TimerSensor import TimerSensor
 

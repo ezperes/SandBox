@@ -1,19 +1,18 @@
 """Dream Company Ecosystem: Agents: Verbosity Handler.
 
-This module is a prototype. It will be implemented opportunely.
-This is not intended to perform the VERBOSITY HANDLER role.
-This is entended to be called by other modules being built.
+
 """
 
 from simple_classproperty import classproperty, ClasspropertyMeta
 
+
+# Global dictionary which stablishes max and min values for verbosity level range
 _verbose_level_range = {
     'min': 0,
     'max': 3,
 }
 
 
-# noinspection PyMethodParameters,PyPropertyDefinition
 class VerbosityHandler(metaclass=ClasspropertyMeta):
 
     # Whole runtime default verbosity level
@@ -27,6 +26,7 @@ class VerbosityHandler(metaclass=ClasspropertyMeta):
 
     @staticmethod
     def _check_level(val):
+        """Checks whether *val* is in level range."""
         return type(val) == int and \
                _verbose_level_range['min'] <= val <= _verbose_level_range['max']
 

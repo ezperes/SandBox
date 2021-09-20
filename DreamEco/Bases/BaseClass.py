@@ -6,10 +6,12 @@ The current Base Class is:
     - DreamBaseClass.
 """
 
+from simple_classproperty import classproperty, ClasspropertyMeta
+
 from DreamEco.Handlers.Verbosity import VerbosityHandler
 
 
-class DreamBaseClass:
+class DreamBaseClass(VerbosityHandler):
     """ Dream Company Ecosystem Base Class.
 
     Generic Base Class to be Inherited by most of other Dream Company Base Classes
@@ -25,7 +27,7 @@ class DreamBaseClass:
     def __init__(self,
                  # VerbosityHandler init parameters
                  verbosity_level=None, runtime_verbosity_level=None):
-        # Inits VerbosityHandler attribute
+        # Instantiates and initiates VerbosityHandler attribute
         self._verbosity = VerbosityHandler(
             verbosity_level, runtime_verbosity_level)
         # Creates alias for verbose method
