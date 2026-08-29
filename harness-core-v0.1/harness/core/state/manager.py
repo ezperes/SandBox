@@ -125,6 +125,11 @@ class StateManager:
             previous_task_context_ref=run.task_context_ref,
             previous_authority=valid_gate.previous_authority if valid_gate else None,
             previous_context=valid_gate.previous_context if valid_gate else None,
+            metadata={
+                "identity_source_ref": valid_gate.identity_source_ref if valid_gate else None,
+                "task_source_ref": valid_gate.task_source_ref if valid_gate else None,
+                "previous_identity_revision_ref": valid_gate.previous_identity_revision_ref if valid_gate else None,
+            },
         )
         self.state_port.save_revalidation_record(audit["revalidation_id"], audit)
         if audit["revalidation_id"] not in state.decision_refs:
