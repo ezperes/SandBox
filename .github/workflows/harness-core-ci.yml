@@ -1,0 +1,28 @@
+name: Harness Core CI
+
+on:
+  pull_request:
+    paths:
+      - 'harness-core-v0.1/**'
+      - '.github/workflows/harness-core-ci.yml'
+  push:
+    branches: ['harness-core-v0.1']
+    paths:
+      - 'harness-core-v0.1/**'
+      - '.github/workflows/harness-core-ci.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: harness-core-v0.1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e '.[dev]'
+      - run: pytest
+      - run: python scripts/export_schemas.py
+      - run: git diff --exit-code -- harness/schemas
