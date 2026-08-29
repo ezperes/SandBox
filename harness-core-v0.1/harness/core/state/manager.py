@@ -9,6 +9,7 @@ from uuid import uuid4
 from harness.contracts import Checkpoint, HarnessErrorCode, HarnessRun, RunState
 from harness.core.errors import HarnessResolutionError
 from harness.core.freshness.audit import RevalidationAuditRecord
+from harness.core.freshness.resume import ResumeFreshnessGate
 from harness.ports import RuntimePort, StatePort
 
 
@@ -83,7 +84,14 @@ class StateManager:
         self.state_port.save_run_state(state)
         return checkpoint
 
-    def resume(self, run: HarnessRun, runtime: RuntimePort, checkpoint_id: str, *, freshness_gate=None) -> RunState:
+    def resume(
+        self,
+        run: HarnessRun,
+        runtime: RuntimePort,
+        checkpoint_id: str,
+        *,
+        freshness_gate: ResumeFreshnessGate | None = None,
+    ) -> RunState:
         try:
             checkpoint = self.state_port.load_checkpoint(checkpoint_id)
             state = self.state_port.load_run_state(checkpoint.run_state_ref)
@@ -107,10 +115,12 @@ class StateManager:
                 checkpoint_id,
             )
 
-        if freshness_gate is None:
+        # This boundary must not accept an arbitrary duck-typed object exposing
+        # prepare(). Only the concrete Core-owned gate may release RuntimePort.resume.
+        if type(freshness_gate) is not ResumeFreshnessGate:
             raise HarnessResolutionError(
                 HarnessErrorCode.AUTHORITY_UNRESOLVED,
-                "resume requires Core-owned freshness/revalidation before RuntimePort.resume",
+                "resume requires the canonical Core ResumeFreshnessGate before RuntimePort.resume",
                 checkpoint_id,
             )
 
