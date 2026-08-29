@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from harness.contracts import Checkpoint, HarnessErrorCode, HarnessRun, RunState
 from harness.core.errors import HarnessResolutionError
-from harness.core.freshness.audit import RevalidationAuditRecord
+from harness.core.freshness.audit import begin_boundary_audit, finalize_boundary_audit
 from harness.core.freshness.resume import ResumeFreshnessGate
 from harness.ports import RuntimePort, StatePort
 
@@ -115,41 +115,92 @@ class StateManager:
                 checkpoint_id,
             )
 
+        valid_gate = freshness_gate if type(freshness_gate) is ResumeFreshnessGate else None
+        audit = begin_boundary_audit(
+            run_id=run.run_id,
+            correlation_id=run.correlation_id,
+            boundary="RuntimePort.resume",
+            checkpoint_ref=checkpoint_id,
+            previous_authority_context_ref=run.authority_context_ref,
+            previous_task_context_ref=run.task_context_ref,
+            previous_authority=valid_gate.previous_authority if valid_gate else None,
+            previous_context=valid_gate.previous_context if valid_gate else None,
+        )
+        self.state_port.save_revalidation_record(audit["revalidation_id"], audit)
+        if audit["revalidation_id"] not in state.decision_refs:
+            state.decision_refs.append(audit["revalidation_id"])
+        self.state_port.save_run_state(state)
+
         # This boundary must not accept an arbitrary duck-typed object exposing
         # prepare(). Only the concrete Core-owned gate may release RuntimePort.resume.
-        if type(freshness_gate) is not ResumeFreshnessGate:
-            raise HarnessResolutionError(
+        if valid_gate is None:
+            exc = HarnessResolutionError(
                 HarnessErrorCode.AUTHORITY_UNRESOLVED,
                 "resume requires the canonical Core ResumeFreshnessGate before RuntimePort.resume",
                 checkpoint_id,
             )
+            blocked = finalize_boundary_audit(
+                audit,
+                status="BLOCKED",
+                outcome="FRESHNESS_GATE_INVALID",
+                error=exc,
+            )
+            self.state_port.save_revalidation_record(audit["revalidation_id"], blocked)
+            raise exc
 
-        previous_authority_ref = run.authority_context_ref
-        previous_task_context_ref = run.task_context_ref
-        preparation = freshness_gate.prepare(run)
+        try:
+            preparation = valid_gate.prepare(run)
+        except HarnessResolutionError as exc:
+            blocked = finalize_boundary_audit(
+                audit,
+                status="BLOCKED",
+                outcome="FRESHNESS_REJECTED",
+                error=exc,
+            )
+            self.state_port.save_revalidation_record(audit["revalidation_id"], blocked)
+            raise
+        except Exception as exc:
+            failed = finalize_boundary_audit(
+                audit,
+                status="FAILED",
+                outcome="FRESHNESS_ERROR",
+                error=exc,
+            )
+            self.state_port.save_revalidation_record(audit["revalidation_id"], failed)
+            raise
 
-        audit = RevalidationAuditRecord.from_preparation(
-            run_id=run.run_id,
-            boundary="RuntimePort.resume",
-            previous_authority_context_ref=previous_authority_ref,
-            previous_task_context_ref=previous_task_context_ref,
+        released = finalize_boundary_audit(
+            audit,
+            status="RELEASED",
+            outcome="REVALIDATED",
             authority_snapshot=preparation.authority_snapshot,
             authority_context_ref=preparation.authority.authority_context_id,
             context=preparation.context,
             changed_chains=preparation.changed_chains,
             identity_changed=preparation.identity_changed,
         )
-        self.state_port.save_revalidation_record(audit.revalidation_id, audit.to_dict())
+        self.state_port.save_revalidation_record(audit["revalidation_id"], released)
 
         run.authority_context_ref = preparation.authority.authority_context_id
         run.task_context_ref = preparation.context.task_context.task_context_id
-        if audit.revalidation_id not in state.decision_refs:
-            state.decision_refs.append(audit.revalidation_id)
         self.state_port.save_run_state(state)
 
-        resumed = runtime.resume(run, state)
-        if audit.revalidation_id not in resumed.decision_refs:
-            resumed.decision_refs.append(audit.revalidation_id)
+        # decision_refs are Core-owned institutional references. The runtime may
+        # transform technical state, but it may not mint or inject decision refs.
+        canonical_decision_refs = list(state.decision_refs)
+        try:
+            resumed = runtime.resume(run, state.model_copy(deep=True))
+        except Exception as exc:
+            failed = finalize_boundary_audit(
+                released,
+                status="FAILED",
+                outcome="RUNTIME_RESUME_ERROR",
+                error=exc,
+            )
+            self.state_port.save_revalidation_record(audit["revalidation_id"], failed)
+            raise
+
+        resumed.decision_refs = canonical_decision_refs
         self.state_port.save_run_state(resumed)
         return resumed
 
