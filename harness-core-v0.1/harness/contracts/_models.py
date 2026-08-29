@@ -11,6 +11,7 @@ class Decision(StrEnum): ALLOW="ALLOW"; DENY="DENY"; REQUIRE_APPROVAL="REQUIRE_A
 class ChainType(StrEnum): TACTICAL="TACTICAL"; TECHNICAL="TECHNICAL"; NORMATIVE="NORMATIVE"
 class ResolutionStatus(StrEnum): RESOLVED="RESOLVED"; SAME_AS_TACTICAL="SAME_AS_TACTICAL"; NOT_APPLICABLE_JUSTIFIED="NOT_APPLICABLE_JUSTIFIED"; UNRESOLVED="UNRESOLVED"
 class ObligationStatus(StrEnum): PENDING="PENDING"; ACCEPTED="ACCEPTED"; IN_PROGRESS="IN_PROGRESS"; COMPLETED="COMPLETED"; REJECTED="REJECTED"; FAILED="FAILED"
+class ReferenceSemantics(StrEnum): POINTER_ONLY="POINTER_ONLY"; MATERIALIZED_CONTEXT="MATERIALIZED_CONTEXT"
 class HarnessErrorCode(StrEnum):
     IDENTITY_UNRESOLVED="IDENTITY_UNRESOLVED"; AUTHORITY_UNRESOLVED="AUTHORITY_UNRESOLVED"; ACTION_FORBIDDEN="ACTION_FORBIDDEN"; APPROVAL_REQUIRED="APPROVAL_REQUIRED"; SCHEMA_INVALID="SCHEMA_INVALID"; CONTRACT_VERSION_UNSUPPORTED="CONTRACT_VERSION_UNSUPPORTED"; TOOL_UNAVAILABLE="TOOL_UNAVAILABLE"; TOOL_TIMEOUT="TOOL_TIMEOUT"; SIDE_EFFECT_UNKNOWN="SIDE_EFFECT_UNKNOWN"; RETRY_BLOCKED="RETRY_BLOCKED"; DELEGATION_FORBIDDEN="DELEGATION_FORBIDDEN"; MAX_HOPS_EXCEEDED="MAX_HOPS_EXCEEDED"; CHECKPOINT_INVALID="CHECKPOINT_INVALID"; VERIFICATION_FAILED="VERIFICATION_FAILED"; MEMORY_ACCESS_DENIED="MEMORY_ACCESS_DENIED"; RUNTIME_UNAVAILABLE="RUNTIME_UNAVAILABLE"; COMPETENCE_INSUFFICIENT="COMPETENCE_INSUFFICIENT"
 
@@ -39,7 +40,15 @@ class AuthorityContext(ContractModel):
     normative_authority_refs:list[str]=Field(default_factory=list); normative_chain_trace:ResolutionChain|None=None; allowed_scopes:list[str]=Field(default_factory=list); forbidden_scopes:list[str]=Field(default_factory=list); competence_refs:list[str]=Field(default_factory=list); registration_prerogatives:list[str]=Field(default_factory=list); authority_snapshot_ref:str|None=None; resolved_at:datetime=Field(default_factory=utcnow)
 class TaskContext(ContractModel):
     task_context_id:str; run_id:str; tarefa_trabalho_id:str; current_order:str; task_state_ref:str; authority_context_ref:str; workspace_ref:str; bootstrap_trace_ref:str
-    tactical_context_refs:list[str]=Field(default_factory=list); technical_context_refs:list[str]=Field(default_factory=list); normative_context_refs:list[str]=Field(default_factory=list); procedural_refs:list[str]=Field(default_factory=list); knowledge_refs:list[str]=Field(default_factory=list); risk_refs:list[str]=Field(default_factory=list); memory_refs:list[str]=Field(default_factory=list); built_at:datetime=Field(default_factory=utcnow)
+    tactical_context_refs:list[str]=Field(default_factory=list); technical_context_refs:list[str]=Field(default_factory=list); normative_context_refs:list[str]=Field(default_factory=list)
+    procedural_refs:list[str]=Field(default_factory=list); knowledge_refs:list[str]=Field(default_factory=list); risk_refs:list[str]=Field(default_factory=list); memory_refs:list[str]=Field(default_factory=list)
+    supporting_ref_semantics:ReferenceSemantics=ReferenceSemantics.POINTER_ONLY
+    built_at:datetime=Field(default_factory=utcnow)
+    @model_validator(mode="after")
+    def supporting_refs_are_pointer_only_in_v01(self):
+        if self.supporting_ref_semantics != ReferenceSemantics.POINTER_ONLY:
+            raise ValueError("procedural/knowledge/risk/memory refs are pointer-only in TaskContext V0.1; materialized content must enter an explicit context materialization path")
+        return self
 class HarnessRun(ContractModel):
     run_id:str; tarefa_trabalho_id:str; agent_id:str; correlation_id:str; workspace_ref:str; run_state_ref:str; authority_context_ref:str
     status:RunStatus=RunStatus.CREATED; task_context_ref:str|None=None; parent_run_id:str|None=None; created_at:datetime=Field(default_factory=utcnow); updated_at:datetime=Field(default_factory=utcnow)
