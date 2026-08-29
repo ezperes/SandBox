@@ -67,3 +67,14 @@
 - Causa: timestamp de resolução é naturalmente distinto entre instâncias e não representa mudança de identidade institucional.
 - Solução correta: congelar os campos estáveis de `AgentIdentity` antes do roteamento e verificar que permanecem inalterados; `resolved_at` fica fora da comparação semântica.
 - Validação CI após correção: pytest, exportação de schemas e verificação de drift concluíram com sucesso.
+
+## Incremento 7
+- Objetivo: implementar `LangGraphAdapter` atrás de `RuntimePort`, preservando o runtime como mecanismo substituível e não como fonte institucional.
+- Criado `LangGraphAdapter` sobre uma superfície mínima `CompiledGraphPort` (`invoke(input, config)`), evitando import obrigatório de LangGraph no Core.
+- `run_id` é projetado para `configurable.thread_id`, permitindo checkpoint/interrupt/resume nativos do runtime sem promover o checkpoint técnico a verdade canônica.
+- `execute` traduz o estado nativo retornado pelo grafo para `RunState`; `resume` invoca o thread existente com `input=None` e combina apenas campos técnicos com o `RunState` canônico prévio.
+- O adapter não injeta `agent_id`, `authority_context_ref`, identidade ou autoridade no estado do grafo; essas semânticas continuam fora do runtime.
+- Resume rejeita `RunState` estrangeiro antes de chamar o grafo.
+- Idempotência de side effects permanece exclusivamente em `StatePort`/`ToolGateway`; o LangGraphAdapter não recebe prerrogativa para reexecutar side effects por conta própria.
+- Testes adicionados para tradução de estado, uso de `thread_id`, resume e rejeição de estado canônico pertencente a outro Run.
+- Decisão: não adicionar dependência obrigatória de `langgraph` ao `pyproject.toml` neste incremento. Causa evitada: transformar o framework em dependência semântica do pacote-base e quebrar o critério de remoção do LangGraph sem mudança dos contratos/Core. Solução: adapter estrutural por protocolo mínimo; integração com uma instância real de LangGraph pode ser adicionada como dependência opcional/extra sem alterar `RuntimePort`.
