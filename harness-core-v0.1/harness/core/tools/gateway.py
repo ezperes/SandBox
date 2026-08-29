@@ -5,7 +5,7 @@ from typing import Any
 
 from harness.contracts import AuthorityContext, Decision, HarnessErrorCode
 from harness.core.authority import AuthorityResolver
-from harness.core.identity import HarnessResolutionError
+from harness.core.errors import HarnessResolutionError
 from harness.core.state import StateManager
 from .registry import ToolRegistry
 
