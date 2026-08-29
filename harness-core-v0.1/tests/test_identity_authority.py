@@ -41,6 +41,35 @@ def test_authority_resolves_three_chains_and_snapshot():
     assert resolved.context.authority_snapshot_ref == resolved.snapshot.snapshot_id
 
 
+def test_allowed_scope_is_intersection_of_declared_authority_chains():
+    s = source(); identity = IdentityResolver(s).resolve("LIVRO:A1")
+    ctx = AuthorityResolver(s).resolve("RUN-1", identity).context
+    assert ctx.allowed_scopes == ["RETURN_CREATE"]
+    assert AuthorityResolver.decide(ctx, "RETURN_CREATE") == Decision.ALLOW
+    assert AuthorityResolver.decide(ctx, "ORDER_READ") == Decision.ESCALATE
+
+
+def test_empty_intersection_authorizes_nothing():
+    s = source()
+    s.records["AUT-X"]["allowed_scopes"] = ["TECH_ONLY"]
+    identity = IdentityResolver(s).resolve("LIVRO:A1")
+    ctx = AuthorityResolver(s).resolve("RUN-X", identity).context
+    assert ctx.allowed_scopes == []
+    assert AuthorityResolver.decide(ctx, "ORDER_READ") == Decision.ESCALATE
+    assert AuthorityResolver.decide(ctx, "TECH_ONLY") == Decision.ESCALATE
+
+
+def test_no_declared_allow_list_is_unrestricted_except_explicit_prohibitions():
+    s = source()
+    s.records["AUT-T"].pop("allowed_scopes")
+    s.records["AUT-X"].pop("allowed_scopes")
+    identity = IdentityResolver(s).resolve("LIVRO:A1")
+    ctx = AuthorityResolver(s).resolve("RUN-U", identity).context
+    assert ctx.allowed_scopes == ["*"]
+    assert AuthorityResolver.decide(ctx, "ORDER_READ") == Decision.ALLOW
+    assert AuthorityResolver.decide(ctx, "DELETE_LEDGER") == Decision.DENY
+
+
 def test_deterministic_decision_precedence():
     s = source(); identity = IdentityResolver(s).resolve("LIVRO:A1")
     ctx = AuthorityResolver(s).resolve("RUN-1", identity).context
@@ -58,6 +87,7 @@ def test_same_tactical_chain_is_explicit_not_implicit():
     identity = IdentityResolver(s).resolve("LIVRO:A1")
     resolved = AuthorityResolver(s).resolve("RUN-2", identity)
     assert resolved.context.technical_chain_trace.status == ResolutionStatus.SAME_AS_TACTICAL
+    assert resolved.context.allowed_scopes == ["ORDER_READ", "RETURN_CREATE"]
 
 
 def test_not_applicable_technical_authority_requires_real_justification():
