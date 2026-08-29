@@ -37,11 +37,17 @@ class ToolGateway:
 
         descriptor = registered.descriptor
 
-        # T11 boundary: a new external side effect may never rely only on an
-        # authority snapshot that was valid earlier. When a Core-owned
-        # freshness gate is configured, canonical revisions are checked before
-        # authorization, idempotency reservation, or adapter invocation.
-        if descriptor.side_effect and self.freshness_gate is not None:
+        # T11 boundary: every new external side effect requires the concrete
+        # Core-owned freshness gate. Absence of the gate, or a duck-typed/fake
+        # replacement, fails closed before authorization, ledger reservation,
+        # or ToolPort invocation.
+        if descriptor.side_effect:
+            if not isinstance(self.freshness_gate, AuthorityFreshnessGate):
+                raise HarnessResolutionError(
+                    HarnessErrorCode.AUTHORITY_UNRESOLVED,
+                    "side effect requires Core-owned authority freshness before ToolPort",
+                    tool_id,
+                )
             self.freshness_gate.ensure_current(authority)
 
         decision = AuthorityResolver.decide(
