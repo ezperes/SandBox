@@ -1,0 +1,59 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "harness_contract_version": {
+      "default": "0.1",
+      "pattern": "^0\\.1$",
+      "title": "Harness Contract Version",
+      "type": "string"
+    },
+    "checkpoint_id": {
+      "title": "Checkpoint Id",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "run_state_ref": {
+      "title": "Run State Ref",
+      "type": "string"
+    },
+    "validated_step": {
+      "title": "Validated Step",
+      "type": "string"
+    },
+    "resume_instruction": {
+      "title": "Resume Instruction",
+      "type": "string"
+    },
+    "artifact_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Artifact Refs",
+      "type": "array"
+    },
+    "evidence_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Evidence Refs",
+      "type": "array"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "checkpoint_id",
+    "run_id",
+    "run_state_ref",
+    "validated_step",
+    "resume_instruction"
+  ],
+  "title": "Checkpoint",
+  "type": "object"
+}

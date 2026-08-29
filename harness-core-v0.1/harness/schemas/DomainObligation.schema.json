@@ -1,0 +1,74 @@
+{
+  "$defs": {
+    "ObligationStatus": {
+      "enum": [
+        "PENDING",
+        "ACCEPTED",
+        "IN_PROGRESS",
+        "COMPLETED",
+        "REJECTED",
+        "FAILED"
+      ],
+      "title": "ObligationStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "harness_contract_version": {
+      "default": "0.1",
+      "pattern": "^0\\.1$",
+      "title": "Harness Contract Version",
+      "type": "string"
+    },
+    "destination_domain": {
+      "title": "Destination Domain",
+      "type": "string"
+    },
+    "obligation_type": {
+      "title": "Obligation Type",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/ObligationStatus",
+      "default": "PENDING"
+    },
+    "destination_agent_or_fraction_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Destination Agent Or Fraction Ref"
+    },
+    "required_result_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Required Result Ref"
+    },
+    "evidence_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Evidence Refs",
+      "type": "array"
+    }
+  },
+  "required": [
+    "destination_domain",
+    "obligation_type"
+  ],
+  "title": "DomainObligation",
+  "type": "object"
+}

@@ -1,0 +1,109 @@
+{
+  "$defs": {
+    "RunStatus": {
+      "enum": [
+        "CREATED",
+        "READY",
+        "RUNNING",
+        "INTERRUPTED",
+        "WAITING_APPROVAL",
+        "WAITING_EXTERNAL",
+        "REWORK",
+        "FAILED",
+        "COMPLETED",
+        "CANCELLED"
+      ],
+      "title": "RunStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "harness_contract_version": {
+      "default": "0.1",
+      "pattern": "^0\\.1$",
+      "title": "Harness Contract Version",
+      "type": "string"
+    },
+    "run_state_id": {
+      "title": "Run State Id",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "tarefa_trabalho_id": {
+      "title": "Tarefa Trabalho Id",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/RunStatus"
+    },
+    "current_step": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Current Step"
+    },
+    "completed_steps": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Completed Steps",
+      "type": "array"
+    },
+    "pending_steps": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Pending Steps",
+      "type": "array"
+    },
+    "artifact_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Artifact Refs",
+      "type": "array"
+    },
+    "decision_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Decision Refs",
+      "type": "array"
+    },
+    "checkpoint_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Checkpoint Ref"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_state_id",
+    "run_id",
+    "tarefa_trabalho_id",
+    "status"
+  ],
+  "title": "RunState",
+  "type": "object"
+}

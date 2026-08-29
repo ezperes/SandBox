@@ -1,0 +1,70 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "harness_contract_version": {
+      "default": "0.1",
+      "pattern": "^0\\.1$",
+      "title": "Harness Contract Version",
+      "type": "string"
+    },
+    "instruction_profile_id": {
+      "title": "Instruction Profile Id",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "agent_id": {
+      "title": "Agent Id",
+      "type": "string"
+    },
+    "permanent_instruction_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Permanent Instruction Refs",
+      "type": "array"
+    },
+    "tactical_instruction_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Tactical Instruction Refs",
+      "type": "array"
+    },
+    "technical_instruction_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Technical Instruction Refs",
+      "type": "array"
+    },
+    "normative_instruction_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Normative Instruction Refs",
+      "type": "array"
+    },
+    "executor_native_projection_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Executor Native Projection Ref"
+    }
+  },
+  "required": [
+    "instruction_profile_id",
+    "run_id",
+    "agent_id"
+  ],
+  "title": "InstructionProfile",
+  "type": "object"
+}
