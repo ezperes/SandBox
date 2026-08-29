@@ -1,4 +1,5 @@
 import pytest
+from types import SimpleNamespace
 
 from harness.adapters.runtimes.fake import FakeRuntimeAdapter
 from harness.adapters.state import InMemoryStateAdapter
@@ -16,25 +17,44 @@ def make_state() -> RunState:
     return RunState(run_state_id="RS1", run_id="R1", tarefa_trabalho_id="MT-1", status=RunStatus.INTERRUPTED, current_step="step-2", completed_steps=["step-1"], pending_steps=["step-2"], artifact_refs=["ART-1"])
 
 
+class PassFreshnessGate:
+    def prepare(self, run):
+        return SimpleNamespace(
+            authority=SimpleNamespace(authority_context_id="AC-CURRENT"),
+            context=SimpleNamespace(task_context=SimpleNamespace(task_context_id="TC-CURRENT")),
+        )
+
+
 def test_state_port_persists_by_value_not_shared_reference():
     port = InMemoryStateAdapter(); state = make_state(); port.save_run_state(state)
     state.completed_steps.append("mutated-after-save")
     assert port.load_run_state("RS1").completed_steps == ["step-1"]
 
 
-def test_checkpoint_persists_and_resume_uses_canonical_state():
+def test_checkpoint_persists_and_resume_uses_canonical_state_after_freshness_gate():
     port = InMemoryStateAdapter(); manager = StateManager(port); state = make_state(); manager.persist(state)
     checkpoint = manager.checkpoint(state, validated_step="step-1", resume_instruction="continue from step-2", evidence_refs=["EV-1"])
-    resumed = manager.resume(make_run(), FakeRuntimeAdapter(), checkpoint.checkpoint_id)
+    run = make_run()
+    resumed = manager.resume(run, FakeRuntimeAdapter(), checkpoint.checkpoint_id, freshness_gate=PassFreshnessGate())
     assert resumed.status == RunStatus.COMPLETED
     assert port.load_run_state("RS1").status == RunStatus.COMPLETED
+    assert run.authority_context_ref == "AC-CURRENT"
+    assert run.task_context_ref == "TC-CURRENT"
 
 
-def test_resume_rejects_checkpoint_from_another_run():
+def test_resume_without_freshness_gate_fails_closed_before_runtime():
     port = InMemoryStateAdapter(); manager = StateManager(port); state = make_state(); manager.persist(state)
     checkpoint = manager.checkpoint(state, validated_step="step-1", resume_instruction="continue")
     with pytest.raises(HarnessResolutionError) as exc:
-        manager.resume(make_run().model_copy(update={"run_id":"R2"}), FakeRuntimeAdapter(), checkpoint.checkpoint_id)
+        manager.resume(make_run(), FakeRuntimeAdapter(), checkpoint.checkpoint_id)
+    assert exc.value.code == HarnessErrorCode.AUTHORITY_UNRESOLVED
+
+
+def test_resume_rejects_checkpoint_from_another_run_before_freshness():
+    port = InMemoryStateAdapter(); manager = StateManager(port); state = make_state(); manager.persist(state)
+    checkpoint = manager.checkpoint(state, validated_step="step-1", resume_instruction="continue")
+    with pytest.raises(HarnessResolutionError) as exc:
+        manager.resume(make_run().model_copy(update={"run_id":"R2"}), FakeRuntimeAdapter(), checkpoint.checkpoint_id, freshness_gate=PassFreshnessGate())
     assert exc.value.code == HarnessErrorCode.CHECKPOINT_INVALID
 
 
