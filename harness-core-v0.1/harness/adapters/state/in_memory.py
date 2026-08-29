@@ -8,11 +8,12 @@ from harness.contracts import Checkpoint, RunState
 
 
 class InMemoryStateAdapter:
-    """Development StatePort with atomic idempotency ledger records."""
+    """Development StatePort with atomic idempotency and audit records."""
 
     def __init__(self):
         self._states: dict[str, RunState] = {}
         self._checkpoints: dict[str, Checkpoint] = {}
+        self._revalidation_records: dict[str, dict[str, Any]] = {}
         self._idempotency_records: dict[str, dict[str, Any]] = {}
         self._lock = Lock()
 
@@ -35,6 +36,18 @@ class InMemoryStateAdapter:
             if checkpoint_id not in self._checkpoints:
                 raise KeyError(checkpoint_id)
             return self._checkpoints[checkpoint_id].model_copy(deep=True)
+
+    def save_revalidation_record(self, revalidation_id: str, record: dict[str, Any]) -> None:
+        if not revalidation_id.strip():
+            raise ValueError("revalidation_id must be explicit")
+        with self._lock:
+            self._revalidation_records[revalidation_id] = deepcopy(record)
+
+    def load_revalidation_record(self, revalidation_id: str) -> dict[str, Any]:
+        with self._lock:
+            if revalidation_id not in self._revalidation_records:
+                raise KeyError(revalidation_id)
+            return deepcopy(self._revalidation_records[revalidation_id])
 
     def create_idempotency_record(self, key: str, record: dict[str, Any]) -> bool:
         if not key.strip():
