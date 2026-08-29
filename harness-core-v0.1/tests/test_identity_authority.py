@@ -3,7 +3,8 @@ import pytest
 from harness.adapters.sources import InMemorySourceAdapter
 from harness.contracts import Decision, ResolutionStatus
 from harness.core.authority import AuthorityResolver
-from harness.core.identity import HarnessResolutionError, IdentityResolver
+from harness.core.errors import HarnessResolutionError
+from harness.core.identity import IdentityResolver
 
 
 def source():

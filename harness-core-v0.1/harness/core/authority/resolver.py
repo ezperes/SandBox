@@ -7,7 +7,7 @@ from harness.contracts import (
     AgentIdentity, AuthorityContext, AuthoritySnapshot, ChainType, Decision,
     ResolutionChain, ResolutionStatus, HarnessErrorCode,
 )
-from harness.core.identity import HarnessResolutionError
+from harness.core.errors import HarnessResolutionError
 from harness.ports import SourcePort
 
 

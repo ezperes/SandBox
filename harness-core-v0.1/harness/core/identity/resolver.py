@@ -1,21 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pydantic import ValidationError
 
 from harness.contracts import AgentIdentity, HarnessErrorCode
+from harness.core.errors import HarnessResolutionError
 from harness.ports import SourcePort
-
-
-@dataclass(slots=True)
-class HarnessResolutionError(Exception):
-    code: HarnessErrorCode
-    message: str
-    source_ref: str | None = None
-
-    def __str__(self) -> str:
-        suffix = f" [{self.source_ref}]" if self.source_ref else ""
-        return f"{self.code.value}: {self.message}{suffix}"
 
 
 class IdentityResolver:

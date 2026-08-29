@@ -3,7 +3,7 @@ import pytest
 from harness.adapters.runtimes.fake import FakeRuntimeAdapter
 from harness.adapters.state import InMemoryStateAdapter
 from harness.contracts import HarnessErrorCode, HarnessRun, RunState, RunStatus
-from harness.core.identity import HarnessResolutionError
+from harness.core.errors import HarnessResolutionError
 from harness.core.state import StateManager
 from harness.core.state.manager import IdempotencyStatus
 
