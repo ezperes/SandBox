@@ -1,0 +1,84 @@
+{
+  "$defs": {
+    "VerificationStatus": {
+      "enum": [
+        "APPROVED",
+        "REJECTED",
+        "PARTIAL",
+        "NOT_RUN"
+      ],
+      "title": "VerificationStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "harness_contract_version": {
+      "default": "0.1",
+      "pattern": "^0\\.1$",
+      "title": "Harness Contract Version",
+      "type": "string"
+    },
+    "verification_id": {
+      "title": "Verification Id",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "subject_ref": {
+      "title": "Subject Ref",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/VerificationStatus"
+    },
+    "verifier_id": {
+      "title": "Verifier Id",
+      "type": "string"
+    },
+    "criterion_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Criterion Refs",
+      "type": "array"
+    },
+    "evidence_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Evidence Refs",
+      "type": "array"
+    },
+    "findings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Findings",
+      "type": "array"
+    },
+    "required_rework": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Required Rework",
+      "type": "array"
+    },
+    "verified_at": {
+      "format": "date-time",
+      "title": "Verified At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "verification_id",
+    "run_id",
+    "subject_ref",
+    "status",
+    "verifier_id"
+  ],
+  "title": "VerificationResult",
+  "type": "object"
+}

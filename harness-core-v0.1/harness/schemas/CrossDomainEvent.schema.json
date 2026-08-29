@@ -1,0 +1,161 @@
+{
+  "$defs": {
+    "DomainObligation": {
+      "additionalProperties": false,
+      "properties": {
+        "harness_contract_version": {
+          "default": "0.1",
+          "pattern": "^0\\.1$",
+          "title": "Harness Contract Version",
+          "type": "string"
+        },
+        "destination_domain": {
+          "title": "Destination Domain",
+          "type": "string"
+        },
+        "obligation_type": {
+          "title": "Obligation Type",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/ObligationStatus",
+          "default": "PENDING"
+        },
+        "destination_agent_or_fraction_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Destination Agent Or Fraction Ref"
+        },
+        "required_result_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Required Result Ref"
+        },
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "destination_domain",
+        "obligation_type"
+      ],
+      "title": "DomainObligation",
+      "type": "object"
+    },
+    "ObligationStatus": {
+      "enum": [
+        "PENDING",
+        "ACCEPTED",
+        "IN_PROGRESS",
+        "COMPLETED",
+        "REJECTED",
+        "FAILED"
+      ],
+      "title": "ObligationStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "harness_contract_version": {
+      "default": "0.1",
+      "pattern": "^0\\.1$",
+      "title": "Harness Contract Version",
+      "type": "string"
+    },
+    "cross_domain_event_id": {
+      "title": "Cross Domain Event Id",
+      "type": "string"
+    },
+    "correlation_id": {
+      "title": "Correlation Id",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "tarefa_trabalho_id": {
+      "title": "Tarefa Trabalho Id",
+      "type": "string"
+    },
+    "event_type": {
+      "title": "Event Type",
+      "type": "string"
+    },
+    "origin_domain": {
+      "title": "Origin Domain",
+      "type": "string"
+    },
+    "origin_agent_id": {
+      "title": "Origin Agent Id",
+      "type": "string"
+    },
+    "business_object_ref": {
+      "title": "Business Object Ref",
+      "type": "string"
+    },
+    "facts": {
+      "additionalProperties": true,
+      "title": "Facts",
+      "type": "object"
+    },
+    "occurred_at": {
+      "format": "date-time",
+      "title": "Occurred At",
+      "type": "string"
+    },
+    "evidence_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Evidence Refs",
+      "type": "array"
+    },
+    "affected_domains": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Affected Domains",
+      "type": "array"
+    },
+    "required_obligations": {
+      "items": {
+        "$ref": "#/$defs/DomainObligation"
+      },
+      "title": "Required Obligations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "cross_domain_event_id",
+    "correlation_id",
+    "run_id",
+    "tarefa_trabalho_id",
+    "event_type",
+    "origin_domain",
+    "origin_agent_id",
+    "business_object_ref",
+    "facts"
+  ],
+  "title": "CrossDomainEvent",
+  "type": "object"
+}
