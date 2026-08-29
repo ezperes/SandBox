@@ -86,9 +86,11 @@
 - Documento: `docs/POST_INCREMENT_AUDIT_1_7.md`.
 - Correção aplicada: `NAO_APLICAVEL_JUSTIFICADO` sem justificativa real deixou de ser aceito; agora falha fechado.
 - Correção aplicada: runtime não pode mais injetar `decision_refs`/`checkpoint_ref` canônicos.
-- Gate obrigatório A1: refatorar autorização para respeitar `TÁTICA ∩ TÉCNICA ∩ NORMATIVA`; a agregação atual de `allowed_scopes` por união é insuficiente para provar a regra canônica.
+- A1 CONCLUÍDO: `allowed_scopes` deixou de usar união. O conjunto efetivo agora é a interseção de todos os allow-lists declarados pelas cadeias aplicáveis; cadeia sem allow-list não adiciona whitelist; ausência total de allow-lists é representada por `*`; interseção vazia autoriza nada e termina em `ESCALATE`. Proibições explícitas continuam prevalecendo.
+- Testes A1: comum às cadeias → ALLOW; apenas tática → ESCALATE; interseção vazia → ESCALATE; sem allow-list → `*` + proibições preservadas; `MESMA_CADEIA_TATICA` mantém o conjunto tático.
+- Decisão A1: `competence_refs` não foi incluída na interseção de autoridade porque autoridade e competência são dimensões distintas; permanece verificada separadamente pelo gate.
 - Gate obrigatório A2: substituir claim binário de idempotência por ledger com estado (`PENDING | COMPLETED | UNKNOWN/FAILED`) e reconciliação/retry explícitos.
 - Gate A3: teste de integração real do LangGraph antes de declarar runtime físico comprovado.
 - Gate A4: chamada live do provider ou declaração explícita de E2E com FakeModelAdapter.
 - Gate A5: formalizar se `procedural_refs`, `knowledge_refs`, `risk_refs` e `memory_refs` são somente apontadores ou conteúdo sujeito a budget/proveniência.
-- Próximo passo foi alterado: saneamento dos gates A1/A2/A5 precede a prova E2E completa.
+- Próximo passo: A2 — ledger idempotente com estado.
