@@ -1,88 +1,126 @@
 # Auditoria Pós-Incrementos 1–7 — Harness Core V0.1
 
 Data: 2026-08-29
-Status: ATIVA — GATE ANTES DA PRIMEIRA PROVA END-TO-END
+Status: **ATIVA — BLOQUEIO ARQUITETURAL ANTES DO E2E INSTITUCIONAL**
 
 ## Objetivo
-Revisar conjuntamente os Incrementos 1–7 antes da primeira prova end-to-end, procurando divergências entre contratos canônicos, decisões arquiteturais, implementação e afirmações de validação.
+Revisar conjuntamente os Incrementos 1–7 e os quatro trabalhos paralelos do GT, exigindo a interseção:
 
-## Retificações já executadas
+`FUNCIONAL ∩ CONTRATUAL ∩ ARQUITETURAL ∩ AUTORIZADO ∩ TESTADO ∩ RASTREÁVEL`
 
-### R1 — `NAO_APLICAVEL_JUSTIFICADO` sem justificativa real
-**Problema:** o AuthorityResolver aceitava `NAO_APLICAVEL_JUSTIFICADO` sem texto justificativo e criava a justificativa genérica `explicitly justified`.
+Resultado funcionando, isoladamente, não é critério de saída.
 
-**Correção:** agora a forma exige `NAO_APLICAVEL_JUSTIFICADO:<justificativa não vazia>`; ausência de justificativa falha fechado com `AUTHORITY_UNRESOLVED`.
+## Retificações e gates concluídos
 
-### R2 — Runtime podia injetar referências canônicas
-**Problema:** o LangGraphAdapter aceitava do estado nativo `decision_refs` e `canonical_checkpoint_ref`.
+### R1 — `NAO_APLICAVEL_JUSTIFICADO`
+Justificativa textual real é obrigatória; ausência falha fechado com `AUTHORITY_UNRESOLVED`.
 
-**Correção:** `decision_refs` e `checkpoint_ref` passam a vir exclusivamente do estado canônico anterior/Core. Valores homônimos produzidos pelo runtime são ignorados.
+### R2 — Runtime não injeta referências canônicas
+`decision_refs` e `checkpoint_ref` vêm exclusivamente do estado canônico anterior/Core. Estado nativo do runtime não pode criá-los ou substituí-los.
 
-## Itens obrigatórios antes do E2E
+### A1 — Autoridade por interseção — CONCLUÍDO
+`AuthorityResolver` calcula autorização positiva pela interseção das allow-lists declaradas pelas cadeias aplicáveis; interseção vazia não autoriza e proibição explícita prevalece.
 
-### A1 — Autoridade por interseção — CONCLUÍDO EM 2026-08-29
-`AuthorityResolver` calcula allow-lists efetivos pela interseção das cadeias aplicáveis que declaram `allowed_scopes`. Cadeias sem allow-list não acrescentam restrição positiva; ausência total de whitelist é representada por `*`; interseção vazia não autoriza nenhuma ação automaticamente. Proibição explícita continua prevalecendo.
+### A2 — Ledger idempotente — CONCLUÍDO
+Estados `PENDING | COMPLETED | FAILED | UNKNOWN`, com resultado/evidência/erro/reconciliação. Retry cego de resultado incerto é bloqueado.
 
-Regressões cobertas: ação comum → `ALLOW`; ação exclusiva de uma cadeia → `ESCALATE`; interseção vazia → nenhuma autorização comum; ausência de whitelist → `*`; `MESMA_CADEIA_TATICA` preserva o conjunto tático.
+### A3 — LangGraph físico — CONCLUÍDO
+Prova física com LangGraph `1.2.11`: `StateGraph`, `MemorySaver`, `interrupt_before`, checkpoint técnico e resume no mesmo `thread_id`. O checkpoint técnico não substitui `Checkpoint` canônico e o Core/FakeRuntime continua executável sem importar LangGraph.
 
-### A2 — Ledger idempotente — CONCLUÍDO EM 2026-08-29
-O claim binário foi substituído por ledger de execução com estados `PENDING | COMPLETED | FAILED | UNKNOWN`, preservando resultado, `evidence_refs`, erro e necessidade de reconciliação.
+### A5 — Supporting refs — CONCLUÍDO
+`procedural_refs`, `knowledge_refs`, `risk_refs` e `memory_refs` permanecem `POINTER_ONLY` na V0.1. Materialização exige caminho explícito sujeito a budget, provenance, revisão e deduplicação.
 
-Semântica aplicada:
-- `PENDING`: efeito em andamento/indeterminado; retry automático bloqueado;
-- `COMPLETED`: efeito comprovadamente concluído; repetição bloqueada;
-- `FAILED`: falha conhecida; retry exige decisão explícita;
-- `UNKNOWN`: não é possível determinar se o efeito externo ocorreu; retry automático bloqueado até reconciliação.
+### CI-01 — Schema drift — CONCLUÍDO
+A CI deixou de depender apenas de `git diff`. `scripts/check_schema_drift.py` usa Git porcelain e detecta alterações rastreadas, schemas novos/untracked (`??`) e schemas ignorados (`!!`). O baseline de 17 schemas + `all.schemas.json` foi materializado pelo exportador em Python 3.11 e a CI conjunta confirmou `schema export matches the Git-tracked state`.
 
-`ToolGateway` integra o ledger ao boundary de side effects. Timeout/exceção após atravessar o boundary não é tratado como simples falha segura: o registro pode ir para `UNKNOWN` para evitar duplicação externa.
+### B1 — Erro compartilhado — CONCLUÍDO
+`HarnessResolutionError` tem propriedade neutra em `harness.core.errors`; `harness.core.identity` reexporta o mesmo objeto de classe. Códigos, payload, string e pontos de raise permanecem semanticamente equivalentes.
 
-Documentação específica: `docs/A2_IDEMPOTENCY_LEDGER_IMPLEMENTATION_LOG.md` e `docs/A2_IDEMPOTENCY_LEDGER_IMPLEMENTATION_REPORT.md`.
+## Gate ainda separado
 
-### A3 — LangGraph ainda não foi validado contra a biblioteca real
-Existe `LangGraphAdapter` atrás de superfície mínima (`CompiledGraphPort`) e os testes atuais usam StubGraph. O Incremento 7 prova boundary/tradução compatível, não integração física com pacote/checkpointer/interrupt reais.
+### A4 — Provider live — ABERTO, mas não é o blocker imediato
+`OpenAIResponsesAdapter` continua comprovado por cliente injetado/stub. Um E2E futuro deve declarar explicitamente FakeModelAdapter ou executar chamada live. Não antecipar esse gate enquanto T10/T11 estiverem contraditos.
 
-**Ação:** adicionar teste de integração com versão fixada do LangGraph antes de declarar runtime físico comprovado.
+## Auditoria arquitetural T01–T12 pós-integração
 
-### A4 — OpenAIResponsesAdapter ainda não teve chamada live
-O adapter traduz uma superfície Responses compatível por cliente injetado; testes usam stub.
+Classificação canônica:
+- `PROVEN`: cenário completo demonstrado executavelmente.
+- `PARTIAL`: componentes relevantes existem, mas o cenário institucional completo não está demonstrado.
+- `NOT_PROVEN`: contratos/documentação existem sem fluxo executável suficiente.
+- `CONTRADICTED`: há caminho executável que viola diretamente o requisito.
 
-**Ação:** na prova E2E executar chamada real ou declarar explicitamente que o E2E usa `FakeModelAdapter`, mantendo teste live como gate separado.
+| Teste | Status | Evidência pós-integração |
+|---|---|---|
+| T01 | `PARTIAL` | Same-as-tactical, normativa, contexto mínimo e ALLOW existem/testam separadamente; falta composição integral identidade→autoridade→contexto→execução→evidência/trace. |
+| T02 | `PARTIAL` | Cadeias tática/técnica permanecem segregadas; falta prova E2E de objetivo Comercial versus método TI sem mistura semântica. |
+| T03 | `NOT_PROVEN` | `CrossDomainEvent`/`DomainObligation` são contratos; não há dispatcher/reconciler nem gate de conclusão global. |
+| T04 | `PARTIAL` | Proibição normativa impede tool call; falta cenário completo com origem normativa, estado, evidência e decision trace integrado. |
+| T05 | `PARTIAL` | Interseção rejeita método não comum, mas não há representação explícita objetivo+método nem seleção de alternativa técnica válida. |
+| T06 | `PARTIAL` | Competência insuficiente bloqueia execução; não existe Delegation Gate/Port para Elemento competente. |
+| T07 | `PARTIAL` | `rebuild_partial()` preserva cadeias não alteradas; não há detector de revisão que derive `changed_chains` e persista transição. |
+| T08 | `NOT_PROVEN` | Mudança de Fração/GT/domínio não dispara nova Identity/Authority/Bootstrap/InstructionProfile. |
+| T09 | `NOT_PROVEN` | Não há Delegation Gate nem Instruction Adapters Claude/Codex; ModelRouter não prova delegação cross-provider. |
+| T10 | `CONTRADICTED` | `StateManager.resume()` valida checkpoint/RunState e chama imediatamente `runtime.resume(run,state)` sem re-resolver fontes/autoridade ou reconstruir Active Context. A3 prova o runtime físico, não corrige essa ordem institucional. |
+| T11 | `CONTRADICTED` | `ToolGateway.execute()` aceita `AuthorityContext` pronto e decide sem comparar revisões atuais das fontes; um contexto antigo pode alcançar novo side effect após revogação. |
+| T12 | `PARTIAL` | Fail-closed/ESCALATE existe para várias lacunas; falta conflito explícito e decision trace persistido com fundamentos/fontes/revisões. |
 
-### A5 — Semântica de refs de tarefa — CONCLUÍDO EM 2026-08-29
-Decisão canônica V0.1: `procedural_refs`, `knowledge_refs`, `risk_refs` e `memory_refs` são **apontadores (`POINTER_ONLY`)**, não conteúdo já materializado no Active Context.
+Contagem pós-integração:
 
-Consequências obrigatórias:
-- esses quatro campos não consomem `max_context_tokens` apenas por existirem no `TaskContext`;
-- o `ContextBuilder` não lê suas fontes automaticamente;
-- eles não entram em `token_usage`/proveniência enquanto permanecem apenas apontadores;
-- para virarem conteúdo ativo, devem passar por uma etapa explícita de materialização, que então deve aplicar budget, proveniência, revisão e deduplicação;
-- conteúdo materializado não pode ser disfarçado nesses campos para escapar do budget.
+`PROVEN=0 | PARTIAL=7 | NOT_PROVEN=3 | CONTRADICTED=2`
 
-O contrato ganhou `ReferenceSemantics` e `TaskContext.supporting_ref_semantics`, fixado em `POINTER_ONLY` na V0.1. Marcar esses refs como `MATERIALIZED_CONTEXT` dentro de `TaskContext` falha fechado. Testes provam que as fontes desses refs não são lidas e que não alteram o budget ativo.
+A integração de A3, B1 e CI-01 melhora evidência física, acoplamento e CI, mas não muda as classificações funcionais T01–T12 produzidas pela auditoria ARCH-01 porque nenhum desses workers implementou coordenação/freshness/delegação.
 
-## Melhorias recomendadas, não bloqueantes isoladamente
+## Verificações arquiteturais transversais
 
-### B1 — Erro compartilhado
-`HarnessResolutionError` nasceu no pacote `core.identity` e passou a ser reutilizado por autoridade, estado e tools. Mover para `core.errors` reduz acoplamento semântico indevido.
+- `TÁTICA ∩ TÉCNICA ∩ NORMATIVA`: preservada no `AuthorityResolver`; nenhum worker afrouxou a interseção.
+- `CONTRATOS CANÔNICOS ← CORE ← PORTS ← ADAPTERS ← TECNOLOGIAS EXTERNAS`: preservado. LangGraph permanece sob adapter e dependência opcional/dev.
+- Identidade institucional continua em Core/fontes canônicas; provider/runtime não altera `AgentIdentity`.
+- Autoridade continua em Core/fontes canônicas; LangGraph não recebe `authority_context_ref` como estado nativo canônico.
+- Checkpoint nativo LangGraph permanece técnico; `Checkpoint` canônico continua Core-owned.
+- Supporting refs continuam `POINTER_ONLY`.
+- Side effects continuam atravessando `ToolGateway` + ledger; porém T11 exige freshness antes desse gate ser considerado suficiente contra revogação posterior.
+- A1/A2/A5 não sofreram regressão observável: suíte conjunta inteira passou após B1/A3/CI-01.
 
-### B2 — ToolDescriptor ainda é contrato interno
-Antes de interfaces externas estáveis convém versionar/formalizar `ToolDescriptor` em contrato Pydantic se ele atravessar boundaries, persistência ou configuração declarativa.
+## CI conjunta pós-integração
 
-### B3 — Estado técnico ≠ conclusão institucional
-O LangGraphAdapter traduz `harness_status=COMPLETED` em `RunStatus.COMPLETED`. Na composição E2E, conclusão institucional só deve ocorrer após Evidence + VerificationResult + gates finais.
+GitHub Actions `Harness Core CI`, PR de integração:
+- Ubuntu 24.04;
+- CPython `3.11.16`;
+- Pydantic `2.13.5`;
+- pytest `8.4.2`;
+- LangGraph `1.2.11`;
+- `pytest`: **50 passed in 0.69s**;
+- exportador: **17 schemas**;
+- hardening CI: **schema export matches the Git-tracked state**.
 
-### B4 — Resume instruction
-`Checkpoint.resume_instruction` é persistido, mas o `StateManager.resume()` ainda não o entrega explicitamente ao RuntimePort. Definir se é orientação auditável apenas para Core/coordenador ou parte obrigatória do payload de retomada.
+## Incongruence check
 
-### B5 — Verificação de schemas gerados
-A CI executa `git diff --exit-code -- harness/schemas`, mas arquivos novos não rastreados podem escapar desse check. Endurecer a CI para também verificar `git status --porcelain -- harness/schemas` antes de considerar o bundle de schemas integralmente protegido contra drift.
+1. **Corrigido:** documentação antiga dizia que A3/LangGraph real estava pendente; agora há prova física.
+2. **Corrigido:** documentação antiga marcava A2/A5 como próximos; ambos já estavam implementados.
+3. **Corrigido:** B5 dizia que untracked schemas poderiam escapar; CI-01 fechou o blind spot e o baseline foi versionado.
+4. **Retificado:** relatórios A3/B1 anteriores registraram schema check verde usando `git diff`; isso não era prova suficiente porque o BASE_SHA não possuía schemas rastreados. A evidência válida de sincronismo é a CI conjunta endurecida após materialização do baseline.
+5. **Mantido:** A3 prova checkpoint/interrupt/resume técnico real, mas não deve ser citado como prova de T10 institucional.
+6. **Mantido:** `RunStatus.COMPLETED` produzido por runtime técnico não equivale automaticamente a conclusão institucional; Evidence/Verification/gates finais continuam necessários.
 
-## Gate de saída desta auditoria
-Antes da primeira prova E2E completa:
-1. ~~A1 — interseção de autoridade~~ CONCLUÍDO;
-2. ~~A2 — ledger idempotente com estado~~ CONCLUÍDO;
-3. ~~A5 — semântica/budget/proveniência dos refs~~ CONCLUÍDO;
-4. A3 — integração física com LangGraph real;
-5. A4 — declarar FakeModelAdapter ou executar provider live.
+## Riscos e débitos técnicos
 
-As retificações R1 e R2 permanecem cobertas por testes de regressão.
+### P0 — T11: autoridade stale antes de side effect
+Risco: autorização revogada após resolução pode continuar válida dentro de `AuthorityContext` antigo. Necessário freshness/revision gate Core-owned antes de side effects relevantes.
+
+### P0 — T10: resume com contexto stale
+Risco: retomada pode executar runtime antes de reconstruir Active Context e revalidar autoridade. Ledger reduz duplicação, mas não resolve autorização/contexto obsoleto.
+
+### P1 — T03/T06/T08/T09
+Coordenação interdomínio, delegação por competência, transição organizacional e Instruction Compatibility Layer permanecem não materializadas.
+
+### P1 — T07/T12
+Detector de mudança por revisão e decision trace persistido permanecem incompletos.
+
+### P2 — dependências de schema
+Pydantic usa intervalo `>=2.10,<3`; schemas foram gerados/validados com 2.13.5. A CI protege drift, mas não há lockfile do ambiente Python. Mudança futura de Pydantic pode produzir drift legítimo que exigirá revisão explícita.
+
+## Gate de saída
+
+O Harness **não está autorizado a avançar para E2E institucional** enquanto T10/T11 permanecerem `CONTRADICTED`.
+
+O próximo trabalho deve priorizar um freshness gate Core-owned antes de novo side effect, com comparação de revision refs e fail-closed em mismatch. O mesmo primitivo poderá depois ser reutilizado no fluxo de resume para fechar T10.
