@@ -50,6 +50,12 @@ def gateway(descriptor, response=None):
     ), adapter
 
 
+def only_audit(gw):
+    records = list(gw.state.state_port._revalidation_records.values())
+    assert len(records) == 1
+    return records[0]
+
+
 def test_side_effect_without_core_freshness_gate_fails_closed_before_tool_port():
     descriptor = ToolDescriptor(tool_id="drive.write", action_scope="drive:write", risk_level=RiskLevel.HIGH, side_effect=True)
     registry = ToolRegistry()
@@ -67,6 +73,10 @@ def test_side_effect_without_core_freshness_gate_fails_closed_before_tool_port()
         )
     assert "AUTHORITY_UNRESOLVED" in str(exc.value)
     assert adapter.calls == []
+    audit = only_audit(gw)
+    assert audit["status"] == "BLOCKED"
+    assert audit["outcome"] == "FRESHNESS_GATE_INVALID"
+    assert audit["previous_revision_refs"]["tactical"] == ["REV-1"]
 
 
 def test_side_effect_requires_gate_business_key_and_blocks_duplicate():
@@ -89,13 +99,18 @@ def test_side_effect_requires_gate_business_key_and_blocks_duplicate():
     assert len(adapter.calls) == 1
 
 
-def test_forbidden_scope_never_reaches_adapter():
+def test_forbidden_scope_never_reaches_adapter_and_persists_deny():
     descriptor = ToolDescriptor(tool_id="tool", action_scope="finance:pay", side_effect=True)
     gw, adapter = gateway(descriptor)
     with pytest.raises(HarnessResolutionError) as exc:
         gw.execute(run_id="R1", authority=authority(forbidden=["finance:pay"]), tool_id="tool", payload={}, business_key="P1")
     assert "ACTION_FORBIDDEN" in str(exc.value)
     assert adapter.calls == []
+    audit = only_audit(gw)
+    assert audit["status"] == "BLOCKED"
+    assert audit["outcome"] == "DENY"
+    assert audit["decision"] == "DENY"
+    assert audit["error_code"] == "ACTION_FORBIDDEN"
 
 
 def test_missing_competence_escalates_before_tool_call():
