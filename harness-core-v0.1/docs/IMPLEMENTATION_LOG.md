@@ -56,17 +56,18 @@
 - Decisão: `ToolDescriptor` permaneceu inicialmente como tipo interno do Core, sem entrar ainda no bundle de contratos Pydantic, para não alterar os contratos canônicos durante este incremento sem a migração/versionamento correspondente. A formalização no bundle será tratada em etapa específica de contratos.
 
 ## Incremento 6
-- Objetivo: materializar `ModelPort` tipado, contratos neutros de modelo, roteamento substituível e primeiro adapter real sem acoplar o Core ao provider.
+- Objetivo: materializar `ModelPort` tipado, contratos neutros de modelo, roteamento substituível e primeiro adapter de provider sem acoplar o Core ao provider.
 - Criados `ModelRequest`, `ModelSelection` e `ModelResponse` como contratos Pydantic neutros a provider.
 - `ModelPort` passou de `dict → dict` para `ModelRequest → ModelResponse`.
 - Criado `ModelRouter`, que seleciona por capacidade, preferência explícita e prioridade; seleção gera `ModelSelection` auditável.
-- Criado `FakeModelAdapter` para testes e `OpenAIResponsesAdapter` como adapter real fino para Responses API, recebendo cliente injetado; o Core não importa o SDK OpenAI.
+- Criado `FakeModelAdapter` para testes e `OpenAIResponsesAdapter` como adapter fino para Responses API, recebendo cliente injetado; o Core não importa o SDK OpenAI.
 - O adapter valida boundary por `model_request_id`, `run_id`, provider e modelo selecionados antes de aceitar o retorno.
 - Testes provam troca de provider/modelo sem alteração de `AgentIdentity` e tradução do Responses Adapter por stub de cliente.
 - Tentativa que falhou: o primeiro teste comparava duas novas instâncias de `AgentIdentity` inteiras e falhou por diferença em `resolved_at`.
 - Causa: timestamp de resolução é naturalmente distinto entre instâncias e não representa mudança de identidade institucional.
 - Solução correta: congelar os campos estáveis de `AgentIdentity` antes do roteamento e verificar que permanecem inalterados; `resolved_at` fica fora da comparação semântica.
 - Validação CI após correção: pytest, exportação de schemas e verificação de drift concluíram com sucesso.
+- Retificação pós-auditoria: a implementação comprova adapter e tradução por cliente compatível/stub; chamada live ao provider ainda não foi comprovada.
 
 ## Incremento 7
 - Objetivo: implementar `LangGraphAdapter` atrás de `RuntimePort`, preservando o runtime como mecanismo substituível e não como fonte institucional.
@@ -78,3 +79,16 @@
 - Idempotência de side effects permanece exclusivamente em `StatePort`/`ToolGateway`; o LangGraphAdapter não recebe prerrogativa para reexecutar side effects por conta própria.
 - Testes adicionados para tradução de estado, uso de `thread_id`, resume e rejeição de estado canônico pertencente a outro Run.
 - Decisão: não adicionar dependência obrigatória de `langgraph` ao `pyproject.toml` neste incremento. Causa evitada: transformar o framework em dependência semântica do pacote-base e quebrar o critério de remoção do LangGraph sem mudança dos contratos/Core. Solução: adapter estrutural por protocolo mínimo; integração com uma instância real de LangGraph pode ser adicionada como dependência opcional/extra sem alterar `RuntimePort`.
+- Retificação pós-auditoria: o estado nativo podia fornecer `decision_refs`/`canonical_checkpoint_ref`; isso daria ao runtime capacidade de injetar refs canônicos. Correção aplicada: refs de decisão/checkpoint agora só são preservados do estado canônico anterior/Core; valores homônimos do runtime são ignorados.
+- Retificação de linguagem: os testes atuais comprovam compatibilidade de boundary por `StubGraph`; integração contra a biblioteca LangGraph real ainda não foi executada.
+
+## Auditoria transversal pós-Incrementos 1–7
+- Documento: `docs/POST_INCREMENT_AUDIT_1_7.md`.
+- Correção aplicada: `NAO_APLICAVEL_JUSTIFICADO` sem justificativa real deixou de ser aceito; agora falha fechado.
+- Correção aplicada: runtime não pode mais injetar `decision_refs`/`checkpoint_ref` canônicos.
+- Gate obrigatório A1: refatorar autorização para respeitar `TÁTICA ∩ TÉCNICA ∩ NORMATIVA`; a agregação atual de `allowed_scopes` por união é insuficiente para provar a regra canônica.
+- Gate obrigatório A2: substituir claim binário de idempotência por ledger com estado (`PENDING | COMPLETED | UNKNOWN/FAILED`) e reconciliação/retry explícitos.
+- Gate A3: teste de integração real do LangGraph antes de declarar runtime físico comprovado.
+- Gate A4: chamada live do provider ou declaração explícita de E2E com FakeModelAdapter.
+- Gate A5: formalizar se `procedural_refs`, `knowledge_refs`, `risk_refs` e `memory_refs` são somente apontadores ou conteúdo sujeito a budget/proveniência.
+- Próximo passo foi alterado: saneamento dos gates A1/A2/A5 precede a prova E2E completa.
