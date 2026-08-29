@@ -2,9 +2,25 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from harness.contracts import AuthorityContext, ChainType, HarnessErrorCode, ResolutionChain, ResolutionStatus
+from harness.contracts import (
+    AgentIdentity,
+    AuthorityContext,
+    ChainType,
+    HarnessErrorCode,
+    ResolutionChain,
+    ResolutionStatus,
+)
 from harness.core.errors import HarnessResolutionError
+from harness.core.identity import IdentityResolver
 from harness.ports import SourcePort
+
+
+@dataclass(frozen=True, slots=True)
+class IdentityFreshnessCheck:
+    source_ref: str
+    agent_id: str
+    expected_revision_ref: str
+    current_revision_ref: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,17 +32,63 @@ class FreshnessCheck:
 
 
 class AuthorityFreshnessGate:
-    """Fail-closed freshness boundary for authority snapshots.
+    """Fail-closed freshness boundary for identity and authority snapshots.
 
-    This component does not create authority and does not silently re-resolve it.
-    It only proves that the authority-chain revisions used to build an
-    AuthorityContext still match the canonical SourcePort at a sensitive
-    boundary. A mismatch invalidates reuse of that context and requires the
-    caller/coordinator to re-resolve before retrying.
+    The gate receives the AgentIdentity baseline that was used to resolve the
+    AuthorityContext. At a sensitive boundary it proves both that identity and
+    authority-chain revisions still match canonical SourcePort data. It does not
+    silently re-resolve authority; any mismatch requires the caller/coordinator
+    to obtain a fresh identity/authority context before retrying.
     """
 
-    def __init__(self, source: SourcePort):
+    def __init__(self, source: SourcePort, identity: AgentIdentity):
         self.source = source
+        self.identity = identity
+        if not identity.source_revision_ref or not identity.source_revision_ref.strip():
+            raise HarnessResolutionError(
+                HarnessErrorCode.IDENTITY_UNRESOLVED,
+                "authority freshness requires an identity baseline revision",
+                identity.source_ref,
+            )
+
+    def _check_identity(self, authority: AuthorityContext) -> IdentityFreshnessCheck:
+        if authority.agent_id != self.identity.agent_id:
+            raise HarnessResolutionError(
+                HarnessErrorCode.IDENTITY_UNRESOLVED,
+                "authority agent does not match the identity freshness baseline",
+                self.identity.source_ref,
+            )
+
+        current = IdentityResolver(self.source).resolve(self.identity.source_ref)
+        current_revision = str(current.source_revision_ref or "").strip()
+        if not current_revision:
+            raise HarnessResolutionError(
+                HarnessErrorCode.IDENTITY_UNRESOLVED,
+                "identity freshness source has no revision_ref",
+                self.identity.source_ref,
+            )
+        if current.agent_id != self.identity.agent_id:
+            raise HarnessResolutionError(
+                HarnessErrorCode.IDENTITY_UNRESOLVED,
+                "canonical identity agent changed since authority resolution",
+                self.identity.source_ref,
+            )
+        if current_revision != self.identity.source_revision_ref:
+            raise HarnessResolutionError(
+                HarnessErrorCode.IDENTITY_UNRESOLVED,
+                (
+                    "identity is stale: expected revision "
+                    f"{self.identity.source_revision_ref!r}, current revision {current_revision!r}"
+                ),
+                self.identity.source_ref,
+            )
+
+        return IdentityFreshnessCheck(
+            source_ref=self.identity.source_ref,
+            agent_id=self.identity.agent_id,
+            expected_revision_ref=self.identity.source_revision_ref,
+            current_revision_ref=current_revision,
+        )
 
     def _check_chain(self, chain: ResolutionChain | None) -> FreshnessCheck | None:
         if chain is None or chain.status == ResolutionStatus.NOT_APPLICABLE_JUSTIFIED:
@@ -71,8 +133,12 @@ class AuthorityFreshnessGate:
             current_revision_ref=current,
         )
 
-    def ensure_current(self, authority: AuthorityContext) -> tuple[FreshnessCheck, ...]:
-        checks: list[FreshnessCheck] = []
+    def ensure_current(
+        self, authority: AuthorityContext
+    ) -> tuple[IdentityFreshnessCheck | FreshnessCheck, ...]:
+        checks: list[IdentityFreshnessCheck | FreshnessCheck] = [
+            self._check_identity(authority)
+        ]
         seen: set[tuple[str, tuple[str, ...]]] = set()
         for chain in (
             authority.tactical_chain_trace,
