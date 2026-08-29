@@ -24,12 +24,19 @@ Revisar conjuntamente os Incrementos 1–7 antes da primeira prova end-to-end, p
 
 ## Itens obrigatórios antes do E2E
 
-### A1 — Autoridade deve obedecer interseção entre cadeias
-**Estado atual:** `allowed_scopes`, `competence_refs` e outros campos são agregados por união dos documentos tático/técnico/normativo. `AuthorityResolver.decide()` decide sobre a lista agregada.
+### A1 — Autoridade deve obedecer interseção entre cadeias — CONCLUÍDO EM 2026-08-29
+**Problema anterior:** `allowed_scopes` era agregado por união dos documentos tático/técnico/normativo, podendo autorizar uma ação aceita por apenas uma das cadeias.
 
-**Incongruência:** a regra arquitetural canônica é `EXECUÇÃO VÁLIDA = TÁTICA ∩ TÉCNICA ∩ NORMATIVA`. União de permissões pode autorizar uma ação permitida por uma cadeia e não autorizada por outra.
+**Correção implementada:** `AuthorityResolver` agora calcula os allow-lists efetivos pela interseção de todas as cadeias aplicáveis que declaram `allowed_scopes`. Cadeias que não declaram allow-list não adicionam restrição positiva; quando nenhuma cadeia declara allow-list, o contexto usa `*` para representar ausência explícita de whitelist, mantendo proibições como regra prevalente. Quando allow-lists declarados têm interseção vazia, nenhuma ação é autorizada automaticamente e a decisão termina em `ESCALATE`.
 
-**Correção necessária:** preservar constraints por cadeia no contrato/contexto e calcular a autorização efetiva por interseção das cadeias aplicáveis; proibição explícita continua prevalecendo. Cadeia sem regra explícita deve ter semântica definida, sem virar autorização implícita.
+**Regressões cobertas:**
+- ação comum às cadeias → `ALLOW`;
+- ação permitida apenas pela cadeia tática → `ESCALATE`;
+- interseção vazia → nenhuma das ações exclusivas é autorizada;
+- ausência total de allow-list → `*`, ainda subordinado a `forbidden_scopes`;
+- `MESMA_CADEIA_TATICA` preserva o mesmo conjunto efetivo da cadeia tática.
+
+**Nota:** `competence_refs` permanece agregada separadamente porque competência não é autoridade. Qualquer evolução da semântica de competência por cadeia deve ser tratada em item próprio, sem reintroduzir união de autoridade.
 
 ### A2 — Idempotência precisa de ledger de execução, não apenas claim permanente
 **Estado atual:** `StatePort.claim_idempotency()` grava uma chave em set antes da chamada externa e não possui estados intermediários/finais.
@@ -75,7 +82,7 @@ O LangGraphAdapter traduz `harness_status=COMPLETED` em `RunStatus.COMPLETED`. N
 
 ## Gate de saída desta auditoria
 Antes da primeira prova E2E completa:
-1. corrigir A1 (interseção de autoridade);
+1. ~~corrigir A1 (interseção de autoridade);~~ CONCLUÍDO;
 2. corrigir A2 (ledger idempotente com estado);
 3. decidir e documentar A5;
 4. executar teste real de LangGraph (A3) ou manter a prova explicitamente como compatibilidade de boundary;
