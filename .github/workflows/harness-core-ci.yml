@@ -25,4 +25,4 @@ jobs:
       - run: python -m pip install -e '.[dev]'
       - run: pytest
       - run: python scripts/export_schemas.py
-      - run: git diff --exit-code -- harness/schemas
+      - run: python scripts/check_schema_drift.py
