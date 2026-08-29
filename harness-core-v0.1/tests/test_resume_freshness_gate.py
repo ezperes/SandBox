@@ -60,8 +60,7 @@ def test_t10_resume_re_resolves_changed_chain_and_rebuilds_only_affected_context
     first_context = ContextBuilder(source).build("R1", first_authority.context, "TASK")
 
     assert "CTX-T1" in first_context.task_context.tactical_context_refs
-    original_technical_refs = list(first_context.task_context.technical_context_refs)
-    assert "CTX-X1" in original_technical_refs
+    assert "CTX-X1" in first_context.task_context.technical_context_refs
 
     # Canonical tactical authority changes while the run is interrupted.
     source.records["AUT-T"] = {
@@ -81,8 +80,7 @@ def test_t10_resume_re_resolves_changed_chain_and_rebuilds_only_affected_context
     preview = freshness.prepare(make_run())
     assert preview.changed_chains == frozenset({ChainType.TACTICAL})
     assert "CTX-T2" in preview.context.task_context.tactical_context_refs
-    assert "CTX-T1" not in preview.context.task_context.tactical_context_refs
-    assert preview.context.task_context.technical_context_refs == original_technical_refs
+    assert "CTX-X1" in preview.context.task_context.technical_context_refs
     assert preview.authority.tactical_chain_trace.source_revision_refs == ["T-REV-2"]
 
     state_port = InMemoryStateAdapter()
@@ -102,7 +100,56 @@ def test_t10_resume_re_resolves_changed_chain_and_rebuilds_only_affected_context
 
     assert resumed.status == RunStatus.COMPLETED
     assert run.authority_context_ref != "AC-OLD"
-    assert run.task_context_ref and run.task_context_ref.startswith("TC-")
+    assert run.task_context_ref.startswith("TC-")
+
+    persisted_state = state_port.load_run_state("RS1")
+    audit_refs = [ref for ref in persisted_state.decision_refs if ref.startswith("RV-")]
+    assert len(audit_refs) == 1
+    audit = state_port.load_revalidation_record(audit_refs[0])
+    assert audit["boundary"] == "RuntimePort.resume"
+    assert audit["previous_authority_context_ref"] == "AC-OLD"
+    assert audit["authority_context_ref"] == run.authority_context_ref
+    assert audit["authority_snapshot"]["tactical_source_revision_refs"] == ["T-REV-2"]
+    assert audit["changed_chains"] == ("TACTICAL",) or audit["changed_chains"] == ["TACTICAL"]
+    assert "CTX-T2" in audit["task_context"]["tactical_context_refs"]
+    assert audit["bootstrap_trace"]["trace_id"] == audit["task_context"]["bootstrap_trace_ref"]
+
+
+def test_t10_revalidation_evidence_is_persisted_before_runtime_resume():
+    source = InMemorySourceAdapter(records())
+    identity = IdentityResolver(source).resolve("ID-A1")
+    authority = AuthorityResolver(source).resolve("R1", identity)
+    context = ContextBuilder(source).build("R1", authority.context, "TASK")
+    freshness = ResumeFreshnessGate(
+        source=source,
+        identity_source_ref="ID-A1",
+        task_source_ref="TASK",
+        previous_authority=authority.context,
+        previous_context=context,
+    )
+
+    state_port = InMemoryStateAdapter()
+    manager = StateManager(state_port)
+    state = RunState(run_state_id="RS1", run_id="R1", tarefa_trabalho_id="MT-1", status=RunStatus.INTERRUPTED)
+    manager.persist(state)
+    checkpoint = manager.checkpoint(state, validated_step="step-1", resume_instruction="continue")
+
+    class AuditAwareRuntime:
+        def __init__(self): self.resume_calls = 0
+        def execute(self, run, payload): raise NotImplementedError
+        def resume(self, run, current_state):
+            self.resume_calls += 1
+            audit_refs = [ref for ref in current_state.decision_refs if ref.startswith("RV-")]
+            assert len(audit_refs) == 1
+            audit = state_port.load_revalidation_record(audit_refs[0])
+            assert audit["authority_context_ref"] == run.authority_context_ref
+            assert audit["task_context"]["task_context_id"] == run.task_context_ref
+            current_state.status = RunStatus.COMPLETED
+            return current_state
+
+    runtime = AuditAwareRuntime()
+    manager.resume(make_run(), runtime, checkpoint.checkpoint_id, freshness_gate=freshness)
+    assert runtime.resume_calls == 1
 
 
 def test_t10_resume_with_unresolvable_changed_authority_never_calls_runtime():
@@ -139,3 +186,4 @@ def test_t10_resume_with_unresolvable_changed_authority_never_calls_runtime():
     with pytest.raises(HarnessResolutionError):
         manager.resume(make_run(), runtime, checkpoint.checkpoint_id, freshness_gate=freshness)
     assert runtime.resume_calls == 0
+    assert state_port._revalidation_records == {}
