@@ -8,7 +8,7 @@ from harness.contracts import Checkpoint, RunState
 
 
 class InMemoryStateAdapter:
-    """Development StatePort with atomic idempotency and audit records."""
+    """Development StatePort with atomic checkpoint/idempotency and audit records."""
 
     def __init__(self):
         self._states: dict[str, RunState] = {}
@@ -36,6 +36,16 @@ class InMemoryStateAdapter:
             if checkpoint_id not in self._checkpoints:
                 raise KeyError(checkpoint_id)
             return self._checkpoints[checkpoint_id].model_copy(deep=True)
+
+    def consume_checkpoint_ref(self, run_state_id: str, checkpoint_id: str) -> bool:
+        with self._lock:
+            state = self._states.get(run_state_id)
+            if state is None or state.checkpoint_ref != checkpoint_id:
+                return False
+            consumed = state.model_copy(deep=True)
+            consumed.checkpoint_ref = None
+            self._states[run_state_id] = consumed
+            return True
 
     def save_revalidation_record(self, revalidation_id: str, record: dict[str, Any]) -> None:
         if not revalidation_id.strip():
