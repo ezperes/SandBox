@@ -3,7 +3,7 @@ import pytest
 from harness.adapters.state import InMemoryStateAdapter
 from harness.adapters.tools import FakeToolAdapter
 from harness.contracts import AuthorityContext, ChainType, ResolutionChain, ResolutionStatus, RiskLevel
-from harness.core.identity import HarnessResolutionError
+from harness.core.errors import HarnessResolutionError
 from harness.core.state import StateManager
 from harness.core.tools import ToolDescriptor, ToolGateway, ToolRegistry
 

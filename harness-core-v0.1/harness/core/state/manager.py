@@ -7,7 +7,7 @@ from typing import Any
 from uuid import uuid4
 
 from harness.contracts import Checkpoint, HarnessErrorCode, HarnessRun, RunState
-from harness.core.identity import HarnessResolutionError
+from harness.core.errors import HarnessResolutionError
 from harness.ports import RuntimePort, StatePort
 
 
