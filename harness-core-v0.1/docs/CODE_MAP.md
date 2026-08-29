@@ -4,7 +4,7 @@
 - `harness/contracts/model.py`: `ModelRequest`, `ModelSelection` e `ModelResponse` neutros a provider.
 - `harness/ports/`: interfaces estáveis para Runtime, Model, Tool, Memory, Workspace, Source e State.
 - `harness/core/identity/`: resolução de `AgentIdentity` exclusivamente por `SourcePort`, com falha fechada e revisão da fonte.
-- `harness/core/authority/`: resolução das cadeias tática/técnica/normativa, `AuthoritySnapshot` e decisão determinística `ALLOW/DENY/REQUIRE_APPROVAL/ESCALATE`.
+- `harness/core/authority/`: resolução das cadeias tática/técnica/normativa, `AuthoritySnapshot` e decisão determinística `ALLOW/DENY/REQUIRE_APPROVAL/ESCALATE`; `NAO_APLICAVEL_JUSTIFICADO` exige justificativa real.
 - `harness/core/context/bootstrap.py`: resolve até três rotas segmentadas sem materializar conteúdo; produz `BootstrapResolution` e `trace_id`.
 - `harness/core/context/builder.py`: materializa o menor contexto suficiente, aplica orçamento, deduplicação, proveniência por cadeia e Re-Bootstrap parcial sem reler cadeias preservadas.
 - `harness/core/state/manager.py`: persistência canônica de `RunState`, criação/validação de `Checkpoint`, resume e gate de idempotência para side effects.
@@ -12,13 +12,14 @@
 - `harness/core/tools/gateway.py`: boundary obrigatório antes de tools; aplica autoridade, competência, aprovação, business key/idempotência e exigência de evidência.
 - `harness/core/routing/model_router.py`: seleção de recurso cognitivo por capacidade/preferência/prioridade sem alterar `AgentIdentity`.
 - `harness/adapters/models/fake.py`: Model Adapter determinístico para testes.
-- `harness/adapters/models/openai_responses.py`: adapter fino para Responses API por cliente injetado, sem dependência do SDK no Core.
+- `harness/adapters/models/openai_responses.py`: adapter fino para Responses API por cliente injetado, sem dependência do SDK no Core; integração live ainda é gate separado.
 - `harness/adapters/state/in_memory.py`: `StatePort` in-memory com cópia defensiva e claim atômico de idempotência.
 - `harness/adapters/tools/fake.py`: `ToolPort` fake para provar que side effects não são executados quando os gates falham.
 - `harness/adapters/sources/`: adapters de fontes; `InMemorySourceAdapter` para testes e desenvolvimento.
 - `harness/adapters/runtimes/fake/`: adapter in-memory que prova desacoplamento de runtime.
-- `harness/adapters/runtimes/langgraph/runtime.py`: `LangGraphAdapter`; traduz `invoke`/resume por `thread_id` para `RunState` canônico sem entregar identidade, autoridade, política ou idempotência ao runtime.
+- `harness/adapters/runtimes/langgraph/runtime.py`: adapter compatível com superfície de grafo compilado; traduz `invoke`/resume por `thread_id` para `RunState` e ignora tentativas do runtime de injetar `decision_refs`/`checkpoint_ref` canônicos. Integração contra pacote LangGraph real ainda é gate separado.
 - `harness/schemas/`: JSON Schemas gerados a partir dos contratos.
 - `tests/`: validação de contratos, identidade/autoridade, Bootstrap/Context Builder, estado/checkpoint/idempotência, Tool Gateway, Model Router/adapters, LangGraphAdapter e fronteiras arquiteturais.
+- `docs/POST_INCREMENT_AUDIT_1_7.md`: auditoria transversal dos Incrementos 1–7 e gate de correções antes do E2E.
 - `scripts/export_schemas.py`: geração reproduzível dos schemas.
 - `.github/workflows/harness-core-ci.yml`: CI do Harness Core.
