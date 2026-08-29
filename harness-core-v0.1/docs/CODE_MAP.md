@@ -17,7 +17,8 @@
 - `harness/adapters/tools/fake.py`: `ToolPort` fake para provar que side effects não são executados quando os gates falham.
 - `harness/adapters/sources/`: adapters de fontes; `InMemorySourceAdapter` para testes e desenvolvimento.
 - `harness/adapters/runtimes/fake/`: adapter in-memory que prova desacoplamento de runtime.
+- `harness/adapters/runtimes/langgraph/runtime.py`: `LangGraphAdapter`; traduz `invoke`/resume por `thread_id` para `RunState` canônico sem entregar identidade, autoridade, política ou idempotência ao runtime.
 - `harness/schemas/`: JSON Schemas gerados a partir dos contratos.
-- `tests/`: validação de contratos, identidade/autoridade, Bootstrap/Context Builder, estado/checkpoint/idempotência, Tool Gateway, Model Router/adapters e fronteiras arquiteturais.
+- `tests/`: validação de contratos, identidade/autoridade, Bootstrap/Context Builder, estado/checkpoint/idempotência, Tool Gateway, Model Router/adapters, LangGraphAdapter e fronteiras arquiteturais.
 - `scripts/export_schemas.py`: geração reproduzível dos schemas.
 - `.github/workflows/harness-core-ci.yml`: CI do Harness Core.
