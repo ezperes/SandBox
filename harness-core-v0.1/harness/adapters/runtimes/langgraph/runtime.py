@@ -33,8 +33,12 @@ class LangGraphAdapter:
         completed = list(native.get("completed_steps", prior.completed_steps if prior else []))
         pending = list(native.get("pending_steps", prior.pending_steps if prior else []))
         artifacts = list(native.get("artifact_refs", prior.artifact_refs if prior else []))
-        decisions = list(native.get("decision_refs", prior.decision_refs if prior else []))
-        checkpoint_ref = native.get("canonical_checkpoint_ref", prior.checkpoint_ref if prior else None)
+
+        # Canonical decision/checkpoint references are Core-owned. A runtime may
+        # report technical progress, but must never inject or replace these refs.
+        decisions = list(prior.decision_refs if prior else [])
+        checkpoint_ref = prior.checkpoint_ref if prior else None
+
         return RunState(
             run_state_id=run.run_state_ref,
             run_id=run.run_id,
