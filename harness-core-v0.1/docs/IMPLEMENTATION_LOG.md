@@ -80,17 +80,72 @@
 - Testes adicionados para tradução de estado, uso de `thread_id`, resume e rejeição de estado canônico pertencente a outro Run.
 - Decisão: não adicionar dependência obrigatória de `langgraph` ao `pyproject.toml` neste incremento. Causa evitada: transformar o framework em dependência semântica do pacote-base e quebrar o critério de remoção do LangGraph sem mudança dos contratos/Core. Solução: adapter estrutural por protocolo mínimo; integração com uma instância real de LangGraph pode ser adicionada como dependência opcional/extra sem alterar `RuntimePort`.
 - Retificação pós-auditoria: o estado nativo podia fornecer `decision_refs`/`canonical_checkpoint_ref`; isso daria ao runtime capacidade de injetar refs canônicos. Correção aplicada: refs de decisão/checkpoint agora só são preservados do estado canônico anterior/Core; valores homônimos do runtime são ignorados.
-- Retificação de linguagem: os testes atuais comprovam compatibilidade de boundary por `StubGraph`; integração contra a biblioteca LangGraph real ainda não foi executada.
+- Retificação de linguagem: a prova inicial usava `StubGraph`; o GT posterior adicionou a prova física real descrita abaixo.
 
-## Auditoria transversal pós-Incrementos 1–7
+## Auditoria transversal pós-Incrementos 1–7 — estado anterior ao GT
 - Documento: `docs/POST_INCREMENT_AUDIT_1_7.md`.
 - Correção aplicada: `NAO_APLICAVEL_JUSTIFICADO` sem justificativa real deixou de ser aceito; agora falha fechado.
 - Correção aplicada: runtime não pode mais injetar `decision_refs`/`checkpoint_ref` canônicos.
-- A1 CONCLUÍDO: `allowed_scopes` deixou de usar união. O conjunto efetivo agora é a interseção de todos os allow-lists declarados pelas cadeias aplicáveis; cadeia sem allow-list não adiciona whitelist; ausência total de allow-lists é representada por `*`; interseção vazia autoriza nada e termina em `ESCALATE`. Proibições explícitas continuam prevalecendo.
-- Testes A1: comum às cadeias → ALLOW; apenas tática → ESCALATE; interseção vazia → ESCALATE; sem allow-list → `*` + proibições preservadas; `MESMA_CADEIA_TATICA` mantém o conjunto tático.
-- Decisão A1: `competence_refs` não foi incluída na interseção de autoridade porque autoridade e competência são dimensões distintas; permanece verificada separadamente pelo gate.
-- Gate obrigatório A2: substituir claim binário de idempotência por ledger com estado (`PENDING | COMPLETED | UNKNOWN/FAILED`) e reconciliação/retry explícitos.
-- Gate A3: teste de integração real do LangGraph antes de declarar runtime físico comprovado.
-- Gate A4: chamada live do provider ou declaração explícita de E2E com FakeModelAdapter.
-- Gate A5: formalizar se `procedural_refs`, `knowledge_refs`, `risk_refs` e `memory_refs` são somente apontadores ou conteúdo sujeito a budget/proveniência.
-- Próximo passo: A2 — ledger idempotente com estado.
+- A1 CONCLUÍDO: `allowed_scopes` efetivo é interseção das allow-lists declaradas pelas cadeias aplicáveis.
+- A2 foi posteriormente concluído com ledger idempotente com estado.
+- A5 foi posteriormente concluído com `POINTER_ONLY` formalizado.
+
+## GT paralelo A3 + B1 + CI-01 + ARCH-01 — Integração 2026-08-29
+
+### Estado de nascimento
+- BASE_SHA comum: `59d3eb987136ec628bcaba4b45949fb81b2616a2`.
+- Todos os workers mantiveram branches isoladas e não escreveram diretamente na integração.
+- Branch temporária do Integrador: `integration/gt-harness-core-v0.1`.
+
+### B1 — erro compartilhado
+- Resultado: `ACCEPT`.
+- `HarnessResolutionError` movido de `core.identity` para `core.errors`.
+- Re-export legado preservado.
+- Testes provam mesma classe/payload/string observável.
+- Merge de integração: `627ae2305eccd3c3df5ae60a69b0869934da2e3a`.
+
+### A3 — LangGraph real
+- Resultado: `ACCEPT`.
+- `langgraph==1.2.11` adicionado apenas aos extras `dev`/`langgraph`.
+- Teste real usa `StateGraph`, compiled graph, `MemorySaver`, static interrupt e resume no mesmo thread.
+- Runtime continua sem autoridade/identidade institucional.
+- Merge de integração: `1032e020d71963f7fbd4df7fb845cc9635f9958d`.
+- Decisão de interpretação: não introduzir dynamic `Command(resume=<payload>)` porque `RuntimePort` V0.1 não possui resume payload; static interrupt é a prova física compatível com o contrato atual.
+
+### CI-01 — tentativa que falhou → causa → solução correta
+- Worker implementou checker correto de tracked/untracked/ignored.
+- Primeira CI remota do worker: `pytest` PASS → export schemas PASS → `check_schema_drift.py` FAIL.
+- Causa: no BASE_SHA nenhum `harness/schemas/**` estava versionado; o novo checker revelou todos como `??`.
+- Isso confirmou o `SCOPE_EXPANSION_REQUEST` do worker e o comportamento fail-closed.
+- Solução correta do Integrador: gerar os schemas no próprio GitHub Actions, versionar 17 schemas + `all.schemas.json`, remover o workflow temporário e validar o baseline por `pytest + export + git diff`.
+- Baseline merge: `58aea84585e7c35dc7039be98ed3fde9319e98d4`.
+- Em seguida CI-01 foi revalidado sobre esse baseline: `pytest` PASS → export PASS → checker estrito PASS.
+- CI-01 merge: `85658371f9db06a3cbcb68cd7649bc54a4005a3c`.
+
+### ARCH-01 — tentativa de busca corrigida
+- Resultado: `ACCEPT` como auditoria do BASE_SHA.
+- Uma busca de código incompleta inicialmente sugeriu ausência de `CrossDomainEvent`.
+- Causa: resultado de code search tinha cobertura incompleta e não podia sustentar prova negativa.
+- Solução correta: leitura direta do bundle de contratos, que confirmou `CrossDomainEvent` e `InstructionProfile`; conclusão corrigida antes do Gap Map final.
+- Merge de integração: `799278f94d5f0bd59a631148117d8566e58a2197`.
+
+### Nova auditoria após os quatro merges
+- A3 fecha a prova física LangGraph, mas não altera o fluxo Core de resume.
+- B1 altera localização de erro, não semântica de autoridade/gates.
+- CI-01 altera CI, não coordenação do Core.
+- Portanto T10 e T11 permanecem `CONTRADICTED`.
+- Classificação pós-GT: `PROVEN=0 | PARTIAL=7 | NOT_PROVEN=3 | CONTRADICTED=2`.
+- Detalhamento: `docs/GT_INTEGRATION_AUDIT_2026-08-29.md`.
+
+### Gates consolidados
+- A1 `CLOSED`.
+- A2 `CLOSED`.
+- A3 `CLOSED`.
+- A5 `CLOSED`.
+- B1 `CLOSED`.
+- blind spot CI de schemas `CLOSED`.
+- A4 provider live `OPEN`.
+- T10/T11 `ARCHITECTURAL_BLOCKER`.
+
+### Próximo passo único
+`RUN-REVALIDATION-GATE`: freshness/revalidação Core-owned obrigatória antes de resume e side effect relevante, com preservação de snapshot histórico, re-resolução de autoridade, rebuild seletivo de contexto e ESCALATE quando a mudança não puder ser resolvida com segurança.
