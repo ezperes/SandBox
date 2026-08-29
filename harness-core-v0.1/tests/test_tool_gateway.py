@@ -3,7 +3,15 @@ import pytest
 from harness.adapters.sources import InMemorySourceAdapter
 from harness.adapters.state import InMemoryStateAdapter
 from harness.adapters.tools import FakeToolAdapter
-from harness.contracts import AuthorityContext, ChainType, ResolutionChain, ResolutionStatus, RiskLevel
+from harness.contracts import (
+    AgentIdentity,
+    AuthorityContext,
+    ChainType,
+    HarnessRun,
+    ResolutionChain,
+    ResolutionStatus,
+    RiskLevel,
+)
 from harness.core.errors import HarnessResolutionError
 from harness.core.freshness import AuthorityFreshnessGate
 from harness.core.state import StateManager
@@ -26,9 +34,36 @@ def chain(kind):
     )
 
 
-def authority(*, allowed=None, forbidden=None, competences=None):
+def identity(*, agent_id="A1", revision="ID-REV-1"):
+    return AgentIdentity(
+        agent_id=agent_id,
+        name="Agent One",
+        mission_ref="MISSION-1",
+        scope_ref="SCOPE-1",
+        organizational_path_ref="ORG-1",
+        tactical_authority_ref="AUT-T",
+        technical_authority_ref="AUT-X",
+        normative_authority_ref="AUT-N",
+        source_ref=f"ID-{agent_id}",
+        source_revision_ref=revision,
+    )
+
+
+def run(*, run_id="R1", agent_id="A1"):
+    return HarnessRun(
+        run_id=run_id,
+        tarefa_trabalho_id="MT-1",
+        agent_id=agent_id,
+        correlation_id="C1",
+        workspace_ref="WS1",
+        run_state_ref="RS1",
+        authority_context_ref="AC-1",
+    )
+
+
+def authority(*, run_id="R1", agent_id="A1", allowed=None, forbidden=None, competences=None):
     return AuthorityContext(
-        authority_context_id="AC-1", run_id="R1", agent_id="A1",
+        authority_context_id="AC-1", run_id=run_id, agent_id=agent_id,
         tactical_authority_refs=["AUT-T"], technical_authority_refs=["AUT-X"], normative_authority_refs=["AUT-N"],
         tactical_chain_trace=chain(ChainType.TACTICAL), technical_chain_trace=chain(ChainType.TECHNICAL), normative_chain_trace=chain(ChainType.NORMATIVE),
         allowed_scopes=list(allowed or []), forbidden_scopes=list(forbidden or []), competence_refs=list(competences or []),
@@ -37,6 +72,7 @@ def authority(*, allowed=None, forbidden=None, competences=None):
 
 def canonical_source():
     return InMemorySourceAdapter({
+        "ID-A1": {"revision_ref": "ID-REV-1", "identity": identity().model_dump(mode="json")},
         "AUT-T": {"revision_ref": "REV-1"},
         "AUT-X": {"revision_ref": "REV-1"},
         "AUT-N": {"revision_ref": "REV-1"},
@@ -47,10 +83,11 @@ def gateway(descriptor, response=None):
     registry = ToolRegistry()
     adapter = FakeToolAdapter(response)
     registry.register(descriptor, adapter)
+    source = canonical_source()
     return ToolGateway(
         registry,
         StateManager(InMemoryStateAdapter()),
-        freshness_gate=AuthorityFreshnessGate(canonical_source()),
+        freshness_gate=AuthorityFreshnessGate(source, identity()),
     ), adapter
 
 
@@ -70,6 +107,7 @@ def test_side_effect_without_core_freshness_gate_fails_closed_before_tool_port()
     with pytest.raises(HarnessResolutionError) as exc:
         gw.execute(
             run_id="R1",
+            run=run(),
             authority=authority(allowed=["drive:write"]),
             tool_id="drive.write",
             payload={"x": 1},
@@ -89,16 +127,16 @@ def test_side_effect_requires_gate_business_key_and_blocks_duplicate():
     auth = authority(allowed=["drive:write"], competences=["DRIVE_WRITE"])
 
     with pytest.raises(HarnessResolutionError) as exc:
-        gw.execute(run_id="R1", authority=auth, tool_id="drive.write", payload={})
+        gw.execute(run_id="R1", run=run(), authority=auth, tool_id="drive.write", payload={})
     assert "SIDE_EFFECT_UNKNOWN" in str(exc.value)
     assert adapter.calls == []
 
-    result = gw.execute(run_id="R1", authority=auth, tool_id="drive.write", payload={"x": 1}, business_key="DOC-1")
+    result = gw.execute(run_id="R1", run=run(), authority=auth, tool_id="drive.write", payload={"x": 1}, business_key="DOC-1")
     assert result.decision.value == "ALLOW"
     assert len(adapter.calls) == 1
 
     with pytest.raises(HarnessResolutionError) as exc:
-        gw.execute(run_id="R1", authority=auth, tool_id="drive.write", payload={"x": 1}, business_key="DOC-1")
+        gw.execute(run_id="R1", run=run(), authority=auth, tool_id="drive.write", payload={"x": 1}, business_key="DOC-1")
     assert "RETRY_BLOCKED" in str(exc.value)
     assert len(adapter.calls) == 1
 
@@ -107,7 +145,7 @@ def test_forbidden_scope_never_reaches_adapter_and_persists_deny():
     descriptor = ToolDescriptor(tool_id="tool", action_scope="finance:pay", side_effect=True)
     gw, adapter = gateway(descriptor)
     with pytest.raises(HarnessResolutionError) as exc:
-        gw.execute(run_id="R1", authority=authority(forbidden=["finance:pay"]), tool_id="tool", payload={}, business_key="P1")
+        gw.execute(run_id="R1", run=run(), authority=authority(forbidden=["finance:pay"]), tool_id="tool", payload={}, business_key="P1")
     assert "ACTION_FORBIDDEN" in str(exc.value)
     assert adapter.calls == []
     audit = only_audit(gw)
@@ -123,6 +161,7 @@ def test_side_effect_escalate_is_persisted_and_never_reaches_adapter():
     with pytest.raises(HarnessResolutionError) as exc:
         gw.execute(
             run_id="R1",
+            run=run(),
             authority=authority(allowed=["ops:change"]),
             tool_id="tool",
             payload={},
@@ -141,7 +180,7 @@ def test_missing_competence_escalates_before_tool_call():
     descriptor = ToolDescriptor(tool_id="tool", action_scope="ops:change", required_competence="OPS_ADMIN")
     gw, adapter = gateway(descriptor)
     with pytest.raises(HarnessResolutionError) as exc:
-        gw.execute(run_id="R1", authority=authority(allowed=["ops:change"]), tool_id="tool", payload={})
+        gw.execute(run_id="R1", run=run(), authority=authority(allowed=["ops:change"]), tool_id="tool", payload={})
     assert "COMPETENCE_INSUFFICIENT" in str(exc.value)
     assert adapter.calls == []
 
@@ -151,11 +190,11 @@ def test_human_approval_gate_precedes_side_effect():
     gw, adapter = gateway(descriptor)
     auth = authority(allowed=["publish"])
     with pytest.raises(HarnessResolutionError) as exc:
-        gw.execute(run_id="R1", authority=auth, tool_id="tool", payload={}, business_key="PUB-1")
+        gw.execute(run_id="R1", run=run(), authority=auth, tool_id="tool", payload={}, business_key="PUB-1")
     assert "APPROVAL_REQUIRED" in str(exc.value)
     assert adapter.calls == []
 
-    result = gw.execute(run_id="R1", authority=auth, tool_id="tool", payload={}, business_key="PUB-1", approved=True)
+    result = gw.execute(run_id="R1", run=run(), authority=auth, tool_id="tool", payload={}, business_key="PUB-1", approved=True)
     assert result.decision.value == "ALLOW"
     assert len(adapter.calls) == 1
 
@@ -172,11 +211,13 @@ def test_side_effect_toolport_failure_persists_failed_and_unknown_ledger():
     adapter = RaisingAdapter()
     registry.register(descriptor, adapter)
     manager = StateManager(InMemoryStateAdapter())
-    gw = ToolGateway(registry, manager, freshness_gate=AuthorityFreshnessGate(canonical_source()))
+    source = canonical_source()
+    gw = ToolGateway(registry, manager, freshness_gate=AuthorityFreshnessGate(source, identity()))
 
     with pytest.raises(RuntimeError, match="provider timeout"):
         gw.execute(
             run_id="R1",
+            run=run(),
             authority=authority(allowed=["ops:write"]),
             tool_id="tool.fail",
             payload={"x": 1},
@@ -195,7 +236,7 @@ def test_required_evidence_is_enforced_after_execution():
     descriptor = ToolDescriptor(tool_id="tool", action_scope="read", evidence_required=True)
     gw, adapter = gateway(descriptor, {"ok": True})
     with pytest.raises(HarnessResolutionError) as exc:
-        gw.execute(run_id="R1", authority=authority(allowed=["read"]), tool_id="tool", payload={})
+        gw.execute(run_id="R1", run=run(), authority=authority(allowed=["read"]), tool_id="tool", payload={})
     assert "VERIFICATION_FAILED" in str(exc.value)
     assert len(adapter.calls) == 1
 
@@ -203,5 +244,5 @@ def test_required_evidence_is_enforced_after_execution():
 def test_unregistered_tool_fails_closed():
     gw = ToolGateway(ToolRegistry(), StateManager(InMemoryStateAdapter()))
     with pytest.raises(HarnessResolutionError) as exc:
-        gw.execute(run_id="R1", authority=authority(), tool_id="missing", payload={})
+        gw.execute(run_id="R1", run=run(), authority=authority(), tool_id="missing", payload={})
     assert "TOOL_UNAVAILABLE" in str(exc.value)
