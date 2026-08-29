@@ -18,20 +18,21 @@ Implementados `ToolRegistry`, `ToolDescriptor` e `ToolGateway`. Nenhuma tool reg
 ## Incremento 6 — Resultado
 Implementados contratos neutros `ModelRequest`, `ModelSelection` e `ModelResponse`; `ModelPort` tipado; `ModelRouter`; `FakeModelAdapter`; e `OpenAIResponsesAdapter` com cliente injetado. Provider/modelo são recursos substituíveis e não alteram `AgentIdentity`, `AuthorityContext` ou `TaskContext`.
 
-### Arquivos principais do Incremento 6
-- `harness/contracts/model.py`: contratos Pydantic neutros.
-- `harness/core/routing/model_router.py`: seleção por capacidade/preferência/prioridade e validação do retorno.
-- `harness/adapters/models/fake.py`: adapter determinístico.
-- `harness/adapters/models/openai_responses.py`: tradução para Responses API sem dependência do SDK no Core.
-- `tests/test_model_routing.py`: seleção, preferência, identidade estável e tradução de provider.
+## Incremento 7 — Resultado
+Implementado `LangGraphAdapter` atrás de `RuntimePort`, sem importar LangGraph no Core e sem promover o runtime a fonte institucional. O adapter usa uma superfície mínima compatível com grafo compilado (`invoke`), projeta `run_id` para `configurable.thread_id`, traduz o estado técnico para `RunState` canônico e permite resume do thread existente com `input=None`.
+
+### Arquivos principais do Incremento 7
+- `harness/adapters/runtimes/langgraph/runtime.py`: tradução LangGraph → `RunState` e resume por `thread_id`.
+- `harness/adapters/runtimes/langgraph/__init__.py`: export do adapter.
+- `tests/test_langgraph_adapter.py`: tradução, interrupt/resume, isolamento de identidade/autoridade e rejeição de estado estrangeiro.
 
 ### Regras comprovadas
-- Troca de provider/modelo não modifica identidade institucional do agente.
-- `ModelPort` opera apenas por contratos neutros.
-- Core não importa SDK OpenAI.
-- Resposta de adapter com `run_id`, request, provider ou modelo incompatível é rejeitada.
-- Preferências explícitas podem selecionar provider/modelo sem reescrever identidade ou autoridade.
-- CI executou pytest, exportação de schemas e verificação de drift com sucesso após a correção do teste.
+- LangGraph não recebe prerrogativa para definir `AgentIdentity`, autoridade, política ou competência.
+- `run_id` é a chave técnica de thread; o checkpoint do runtime não substitui `Checkpoint` canônico.
+- `RunState` canônico continua sendo reconstruído pelo adapter a partir da execução técnica.
+- Resume valida o vínculo do estado com o Run antes de chamar o runtime.
+- Idempotência de side effects continua em `StatePort`/`ToolGateway`, não em LangGraph.
+- O pacote-base continua executável sem dependência obrigatória do framework LangGraph; remover o adapter não altera contratos ou Core.
 
 ## Ambiente
 Python 3.11+; Pydantic 2.x; pytest 8.x.
@@ -44,9 +45,10 @@ Incremento 1: `python scripts/export_schemas.py` → `ModuleNotFoundError: harne
 Incremento 3: reconstrução total do contexto → I/O desnecessário → Re-Bootstrap materializa somente cadeias alteradas.
 Incremento 4: idempotência no Runtime poderia repetir side effect após troca/retry → claim atômico foi colocado no `StatePort`.
 Incremento 6: teste comparou duas instâncias inteiras de `AgentIdentity` → `resolved_at` naturalmente diferente causou falso negativo → comparação passou a congelar apenas campos semanticamente estáveis da identidade.
+Incremento 7: foi descartada a inclusão de `langgraph` como dependência obrigatória do pacote-base → isso criaria acoplamento operacional desnecessário e enfraqueceria o critério de substituição → o adapter depende apenas de protocolo mínimo compatível; instalação real do framework pode ser um extra opcional quando a prova E2E física for montada.
 
 ## Code map
 `docs/CODE_MAP.md`.
 
 ## Próximo incremento
-LangGraphAdapter: implementar o primeiro `RuntimeAdapter` real atrás de `RuntimePort`, traduzindo estado/checkpoint/interrupt nativos para contratos do Core sem promover LangGraph a fonte de identidade, autoridade ou estado institucional.
+Primeira prova End-to-End: conectar 1 agente real, 1 Tarefa de Trabalho, identidade/autoridade, Bootstrap/Context, Model Adapter, LangGraphAdapter, Tool Gateway, RunState/Checkpoint, Evidence, VerificationResult e TelemetryEvent até encerramento rastreável.
