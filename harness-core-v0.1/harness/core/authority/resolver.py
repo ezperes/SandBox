@@ -38,16 +38,16 @@ class AuthorityResolver:
 
     @staticmethod
     def _effective_allowed_scopes(*raws: dict) -> list[str]:
-        """Return the intersection of every chain that declares an allow-list.
+        """Intersect allow-lists declared by applicable authority chains.
 
-        A chain with no `allowed_scopes` is treated as not adding an allow-list
-        constraint (for example, a normative chain that only declares explicit
-        prohibitions). Once two or more applicable chains declare allow-lists,
-        an action must be present in all of them to remain effectively allowed.
+        Chains that omit `allowed_scopes` add no whitelist constraint. If none
+        declares a whitelist, `*` represents unrestricted-by-whitelist (explicit
+        prohibitions still apply). If declared allow-lists have no common scope,
+        the effective list is empty and no action is automatically authorized.
         """
         declared = [set(raw.get("allowed_scopes", [])) for raw in raws if raw.get("allowed_scopes")]
         if not declared:
-            return []
+            return ["*"]
         effective = declared[0]
         for scopes in declared[1:]:
             effective &= scopes
@@ -121,6 +121,6 @@ class AuthorityResolver:
             return Decision.ESCALATE
         if approval_required:
             return Decision.REQUIRE_APPROVAL
-        if context.allowed_scopes and action_scope not in context.allowed_scopes:
+        if "*" not in context.allowed_scopes and action_scope not in context.allowed_scopes:
             return Decision.ESCALATE
         return Decision.ALLOW
