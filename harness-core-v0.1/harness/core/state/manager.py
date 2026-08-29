@@ -82,7 +82,7 @@ class StateManager:
         self.state_port.save_run_state(state)
         return checkpoint
 
-    def resume(self, run: HarnessRun, runtime: RuntimePort, checkpoint_id: str) -> RunState:
+    def resume(self, run: HarnessRun, runtime: RuntimePort, checkpoint_id: str, *, freshness_gate=None) -> RunState:
         try:
             checkpoint = self.state_port.load_checkpoint(checkpoint_id)
             state = self.state_port.load_run_state(checkpoint.run_state_ref)
@@ -105,6 +105,17 @@ class StateManager:
                 "run state does not point to requested checkpoint",
                 checkpoint_id,
             )
+
+        if freshness_gate is None:
+            raise HarnessResolutionError(
+                HarnessErrorCode.AUTHORITY_UNRESOLVED,
+                "resume requires Core-owned freshness/revalidation before RuntimePort.resume",
+                checkpoint_id,
+            )
+
+        preparation = freshness_gate.prepare(run)
+        run.authority_context_ref = preparation.authority.authority_context_id
+        run.task_context_ref = preparation.context.task_context.task_context_id
 
         resumed = runtime.resume(run, state)
         self.state_port.save_run_state(resumed)
