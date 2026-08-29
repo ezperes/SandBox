@@ -1,72 +1,112 @@
 # Implementation Report — Harness Core V0.1
 
-## Incremento 1 — Resultado
-Esqueleto executável do Core criado com contratos Pydantic V0.1, Ports estáveis e FakeRuntimeAdapter sem LangGraph.
+Data de consolidação: 2026-08-29  
+Relatório detalhado do GT: `docs/GT_INTEGRATION_AUDIT_2026-08-29.md`
 
-## Incremento 2 — Resultado
-Implementados `IdentityResolver` e `AuthorityResolver` sem dependência de provider/runtime. A identidade nasce exclusivamente de `SourcePort`; autoridade é resolvida em até três cadeias e produz `AuthoritySnapshot` versionado.
+## Resultado implementado — Incrementos 1–7
 
-## Incremento 3 — Resultado
-Implementados `BootstrapResolver` e `ContextBuilder`. Um único Bootstrap transforma o `AuthorityContext` em até três rotas segmentadas e o ContextBuilder materializa um `TaskContext` mínimo, deduplicado e limitado por budget, preservando proveniência por cadeia. O Re-Bootstrap parcial mantém intactas as cadeias não afetadas e relê somente a cadeia alterada mais a Tarefa de Trabalho.
+1. **Contratos/Core inicial:** contratos Pydantic V0.1, Ports e FakeRuntimeAdapter independentes de LangGraph.
+2. **Identity + Authority:** identidade por `SourcePort`; três cadeias tática/técnica/normativa; snapshots de revisão; decisões `ALLOW | DENY | REQUIRE_APPROVAL | ESCALATE`; autorização positiva por interseção.
+3. **Bootstrap + Context:** um Bootstrap, até três rotas segmentadas, contexto mínimo por budget/proveniência e `rebuild_partial()` seletivo.
+4. **State + Checkpoint:** `StatePort`, `RunState`, `Checkpoint`, resume técnico e ledger idempotente com `PENDING | COMPLETED | FAILED | UNKNOWN`.
+5. **Tool Gateway:** gates de autoridade, competência, aprovação, idempotência e evidência antes/depois do boundary externo.
+6. **Model routing:** contratos neutros, `ModelRouter`, FakeModelAdapter e OpenAIResponsesAdapter; provider/modelo não alteram `AgentIdentity`.
+7. **Runtime LangGraph:** adapter isolado atrás de `RuntimePort`; runtime não se torna fonte institucional.
 
-## Incremento 4 — Resultado
-Implementados `StatePort`, `InMemoryStateAdapter` e `StateManager`. O Core agora persiste `RunState`, cria checkpoints canônicos, valida retomadas e bloqueia repetição de side effects por chave de idempotência, sem depender de checkpoint nativo de framework/runtime.
+## Consolidação do GT paralelo
 
-## Incremento 5 — Resultado
-Implementados `ToolRegistry`, `ToolDescriptor` e `ToolGateway`. Nenhuma tool registrada atravessa o boundary externo antes de resolução de autoridade/escopo, competência, aprovação e idempotência quando houver side effect. Evidência obrigatória também é validada no retorno.
+### A3 — LangGraph real — CONCLUÍDO
 
-## Incremento 6 — Resultado
-Implementados contratos neutros `ModelRequest`, `ModelSelection` e `ModelResponse`; `ModelPort` tipado; `ModelRouter`; `FakeModelAdapter`; e `OpenAIResponsesAdapter` com cliente injetado. Provider/modelo permanecem substituíveis e não alteram `AgentIdentity`, `AuthorityContext` ou `TaskContext`. A tradução de provider está coberta por stub; chamada live ainda não foi comprovada.
+A integração física foi comprovada contra `langgraph==1.2.11` real com `StateGraph`, compilação, `MemorySaver`, static interrupt/breakpoint e resume no mesmo `thread_id`. LangGraph continua extra opcional/dev; não integra as dependências obrigatórias do Core.
 
-## Incremento 7 — Resultado
-Implementado `LangGraphAdapter` atrás de `RuntimePort`, sem importar LangGraph no Core e sem promover o runtime a fonte institucional. O adapter usa uma superfície mínima compatível com grafo compilado (`invoke`), projeta `run_id` para `configurable.thread_id`, traduz o estado técnico para `RunState` e permite resume do thread existente com `input=None`. Os testes atuais usam `StubGraph`; integração contra pacote LangGraph real permanece pendente.
+A3 fecha o gate físico do runtime, mas **não** resolve o requisito canônico de freshness/re-bootstrap antes de resume (T10).
 
-### Retificações pós-auditoria
-- `NAO_APLICAVEL_JUSTIFICADO` agora exige justificativa textual não vazia. A antiga justificativa genérica automática foi removida; ausência de justificativa falha fechado com `AUTHORITY_UNRESOLVED`.
-- `LangGraphAdapter` deixou de aceitar `decision_refs` e `canonical_checkpoint_ref` vindos do runtime. Referências canônicas de decisão/checkpoint só podem vir do estado canônico anterior/Core.
-- A linguagem dos Incrementos 6 e 7 foi ajustada: há adapters compatíveis e testados por stubs, mas integração live OpenAI e integração com pacote LangGraph real ainda não foram comprovadas.
+### B1 — erro compartilhado — CONCLUÍDO
 
-### Auditoria transversal — gates antes do primeiro E2E completo
-Documento canônico de auditoria no repositório: `docs/POST_INCREMENT_AUDIT_1_7.md`.
+`HarnessResolutionError` foi movido para `harness.core.errors`. O antigo caminho via `harness.core.identity` é re-export compatível. Payload, códigos e string observável permanecem preservados por teste de regressão.
 
-1. **A1 — Autoridade por interseção — CONCLUÍDO:** `allowed_scopes` efetivo agora é a interseção de todos os allow-lists declarados pelas cadeias aplicáveis. Cadeia sem allow-list não adiciona whitelist; ausência total de allow-list é representada por `*`; interseção vazia não autoriza ação e leva a `ESCALATE`; proibição explícita continua prevalecendo.
-2. **A2 — Ledger idempotente — PRÓXIMO:** o claim binário atual bloqueia repetição, mas não distingue operação pendente, completada ou resultado desconhecido. É obrigatório criar ledger com estados e estratégia de retry/reconciliação antes de side effects reais.
-3. **A5 — Semântica dos refs de tarefa:** `procedural_refs`, `knowledge_refs`, `risk_refs` e `memory_refs` precisam ser formalizados como apontadores não materializados ou entrar no pipeline de budget/proveniência.
-4. **A3 — LangGraph físico:** integração real com biblioteca/checkpointer/interrupt deve ser testada antes de declarar o runtime físico comprovado.
-5. **A4 — Provider live:** o E2E deve declarar se usa FakeModelAdapter ou realizar uma chamada live; não tratar teste por stub como integração live.
+### CI-01 — schema drift — CONCLUÍDO COM CORREÇÃO DO INTEGRADOR
 
-### Regras comprovadas por código/teste até aqui
-- identidade vem de `SourcePort` e não do provider/runtime;
-- até três cadeias de autoridade são resolvidas e versionadas;
-- autorização positiva segue a interseção das cadeias aplicáveis que declaram allow-list;
-- interseção vazia não produz autorização implícita;
-- ausência de whitelist é explícita por `*`, sem neutralizar proibições;
-- proibição explícita vence;
-- competência ausente não vira autorização implícita;
-- Bootstrap/Context Builder preservam segregação por cadeia e Re-Bootstrap parcial;
-- `RunState`/`Checkpoint` canônicos ficam fora do runtime;
-- Tool Gateway barra side effects antes do boundary quando gates falham;
-- provider/modelo não reescrevem identidade;
-- runtime não pode injetar refs canônicos de decisão/checkpoint;
-- Core continua executável com Runtime fake sem LangGraph.
+O checker antigo baseado somente em `git diff` não via schemas novos/untracked. O novo `scripts/check_schema_drift.py` usa Git porcelain e detecta tracked, untracked e ignored.
 
-## Ambiente
-Python 3.11+; Pydantic 2.x; pytest 8.x.
+O Integrador materializou o baseline faltante: 17 schemas canônicos + `all.schemas.json`, gerados pelo próprio GitHub Actions e versionados sem alterar contratos.
 
-## Reprodução mínima
-`python -m pip install -e '.[dev]' && pytest && python scripts/export_schemas.py`
+CI atual:
+
+`pytest → python scripts/export_schemas.py → python scripts/check_schema_drift.py`
+
+### ARCH-01 — auditoria independente — INCORPORADA
+
+O Gap Map do BASE_SHA foi preservado como evidência histórica. Nova auditoria pós-integração manteve:
+
+`PROVEN=0 | PARTIAL=7 | NOT_PROVEN=3 | CONTRADICTED=2`
+
+T10 e T11 continuam críticos.
+
+## Gates e invariantes
+
+### Fechados
+
+- A1 — interseção de autoridade.
+- A2 — ledger idempotente com estados/reconciliação.
+- A3 — prova física LangGraph real.
+- A5 — supporting refs `POINTER_ONLY`.
+- B1 — `HarnessResolutionError` compartilhado.
+- B5/CI — detecção de schema novo/untracked/ignored.
+- R1 — `NAO_APLICAVEL_JUSTIFICADO` exige justificativa real.
+- R2 — runtime não injeta refs canônicos de decisão/checkpoint.
+
+### Abertos
+
+- **T10 / CRITICAL:** `StateManager.resume()` ainda entra no runtime sem revalidar fontes/autoridade nem reconstruir o Active Context.
+- **T11 / CRITICAL:** `ToolGateway` pode receber um `AuthorityContext` stale; não há freshness/revision gate antes de novo side effect.
+- A4 — provider live ainda não foi comprovado; eventual E2E deve declarar FakeModelAdapter ou executar provider real.
+- T03/T06/T08/T09/T12 — faltam componentes de interdomínio/delegação/instruction compatibility/decision trace completo.
+
+## Regras arquiteturais preservadas
+
+- `CONTRATOS CANÔNICOS ← CORE ← PORTS ← ADAPTERS ← TECNOLOGIAS EXTERNAS`.
+- identidade/autoridade não pertencem ao runtime/provider.
+- `TÁTICA ∩ TÉCNICA ∩ NORMATIVA` continua sendo condição de autorização positiva.
+- autoridade ≠ competência.
+- conflito/lacuna não resolvidos falham fechado/ESCALATE.
+- checkpoint técnico não substitui checkpoint canônico.
+- side effects passam por gates do Core + ledger.
+- `procedural_refs`, `knowledge_refs`, `risk_refs`, `memory_refs` permanecem `POINTER_ONLY` até materialização explícita.
+- estado pequeno + artefatos fora + apontadores estáveis permanece a regra.
+
+## Testes/CI
+
+A integração foi sequencial, com CI entre workers. Foram observados passos verdes de `pytest`, exportação de schemas e verificação de drift após B1, A3, baseline, CI-01 e ARCH-01.
+
+A execução de CI-01 antes do baseline falhou exatamente no novo checker após testes/exportação passarem; após o baseline, o mesmo checker passou. Isso foi tratado como evidência do blind spot e da correção, não como regressão.
 
 ## Tentativa que falhou → causa → solução correta
-Incremento 1: `python scripts/export_schemas.py` → `ModuleNotFoundError: harness` → raiz ausente do `sys.path` → script passou a inserir `ROOT` antes do import.
-Incremento 3: reconstrução total do contexto → I/O desnecessário → Re-Bootstrap materializa somente cadeias alteradas.
-Incremento 4: idempotência no Runtime poderia repetir side effect após troca/retry → claim atômico foi colocado no `StatePort`; auditoria posterior mostrou que o claim binário ainda precisa evoluir para ledger com estados antes de side effects reais.
-Incremento 6: teste comparou duas instâncias inteiras de `AgentIdentity` → `resolved_at` naturalmente diferente causou falso negativo → comparação passou a congelar apenas campos semanticamente estáveis da identidade.
-Incremento 7: dependência obrigatória de LangGraph foi evitada → adapter usa protocolo mínimo; auditoria posterior identificou que refs canônicos ainda podiam ser lidos do estado nativo → correção aplicada para ignorar `decision_refs`/`canonical_checkpoint_ref` do runtime.
-Pós-auditoria R1: `NAO_APLICAVEL_JUSTIFICADO` sem texto real era aceito com fallback genérico → isso criava exceção não auditável → fallback removido e justificativa passou a ser obrigatória.
-Pós-auditoria A1: união de `allowed_scopes` permitia autoridade positiva por apenas uma cadeia → violava `TÁTICA ∩ TÉCNICA ∩ NORMATIVA` → resolução passou a calcular interseção das allow-lists declaradas. Durante a correção foi identificado um segundo caso: interseção vazia e ausência de whitelist eram indistinguíveis por lista vazia; solução correta foi representar ausência explícita de whitelist por `*` e reservar lista vazia para `nenhuma ação comum autorizada`.
+
+- **CI-01 sem baseline:** checker estrito deixou a CI vermelha → schemas gerados não estavam versionados no BASE_SHA → Integrador gerou os schemas no GitHub Actions, versionou somente a saída canônica e então reintegrou CI-01.
+- **Busca ARCH por CrossDomainEvent:** code search incompleto sugeriu ausência → busca não era prova negativa → leitura direta do bundle encontrou `CrossDomainEvent`/`InstructionProfile`; auditoria foi corrigida antes do relatório.
+- **A3 dynamic interrupt como possível interpretação:** `Command(resume=<payload>)` exigiria contrato de resume não existente → não expandir RuntimePort silenciosamente → usar static interrupt real compatível com V0.1 e registrar dynamic HITL como evolução contratual futura.
+
+Demais tentativas/causas/soluções dos Incrementos 1–7 permanecem registradas em `docs/IMPLEMENTATION_LOG.md` e nos relatórios de workers.
+
+## Riscos e débitos principais
+
+- freshness/revalidation Core-owned antes de resume e side effect;
+- Delegation Gate/Port e Instruction Compatibility Layer;
+- conclusão global de CrossDomainEvent/obrigações;
+- DecisionTrace persistido para conflitos;
+- provider live A4;
+- eventual lock da toolchain Pydantic para reprodutibilidade bit-a-bit dos schemas;
+- checkpointer durável somente quando deployment exigir.
 
 ## Code map
-`docs/CODE_MAP.md`.
 
-## Próximo passo
-**A2 — ledger idempotente com estado**, antes do E2E: substituir claim binário por registro de execução com estados, evidência/resultado quando conhecidos e regras explícitas de retry/reconciliação.
+`docs/CODE_MAP.md`
+
+## Estado
+
+`HARNESS STATUS = ARCHITECTURAL_BLOCKER`
+
+## Próximo passo único
+
+Executar `RUN-REVALIDATION-GATE`: implementar no Core, por testes arquiteturais, freshness/revalidação obrigatória antes de resume e antes de side effect relevante, preservando snapshot histórico e reconstruindo apenas cadeias/contexto afetados antes de atravessar Runtime/Tool boundaries.
