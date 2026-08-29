@@ -1,15 +1,28 @@
 import pytest
 
+from harness.adapters.sources import InMemorySourceAdapter
 from harness.adapters.state import InMemoryStateAdapter
 from harness.adapters.tools import FakeToolAdapter
 from harness.contracts import AuthorityContext, ChainType, ResolutionChain, ResolutionStatus, RiskLevel
 from harness.core.errors import HarnessResolutionError
+from harness.core.freshness import AuthorityFreshnessGate
 from harness.core.state import StateManager
 from harness.core.tools import ToolDescriptor, ToolGateway, ToolRegistry
 
 
 def chain(kind):
-    return ResolutionChain(chain_type=kind, status=ResolutionStatus.RESOLVED, authority_ref=f"AUT-{kind}", route_refs=[f"SRC-{kind}"])
+    ref = {
+        ChainType.TACTICAL: "AUT-T",
+        ChainType.TECHNICAL: "AUT-X",
+        ChainType.NORMATIVE: "AUT-N",
+    }[kind]
+    return ResolutionChain(
+        chain_type=kind,
+        status=ResolutionStatus.RESOLVED,
+        authority_ref=ref,
+        route_refs=[ref],
+        source_revision_refs=["REV-1"],
+    )
 
 
 def authority(*, allowed=None, forbidden=None, competences=None):
@@ -25,7 +38,35 @@ def gateway(descriptor, response=None):
     registry = ToolRegistry()
     adapter = FakeToolAdapter(response)
     registry.register(descriptor, adapter)
-    return ToolGateway(registry, StateManager(InMemoryStateAdapter())), adapter
+    source = InMemorySourceAdapter({
+        "AUT-T": {"revision_ref": "REV-1"},
+        "AUT-X": {"revision_ref": "REV-1"},
+        "AUT-N": {"revision_ref": "REV-1"},
+    })
+    return ToolGateway(
+        registry,
+        StateManager(InMemoryStateAdapter()),
+        freshness_gate=AuthorityFreshnessGate(source),
+    ), adapter
+
+
+def test_side_effect_without_core_freshness_gate_fails_closed_before_tool_port():
+    descriptor = ToolDescriptor(tool_id="drive.write", action_scope="drive:write", risk_level=RiskLevel.HIGH, side_effect=True)
+    registry = ToolRegistry()
+    adapter = FakeToolAdapter({"ok": True})
+    registry.register(descriptor, adapter)
+    gw = ToolGateway(registry, StateManager(InMemoryStateAdapter()))
+
+    with pytest.raises(HarnessResolutionError) as exc:
+        gw.execute(
+            run_id="R1",
+            authority=authority(allowed=["drive:write"]),
+            tool_id="drive.write",
+            payload={"x": 1},
+            business_key="DOC-NO-GATE",
+        )
+    assert "AUTHORITY_UNRESOLVED" in str(exc.value)
+    assert adapter.calls == []
 
 
 def test_side_effect_requires_gate_business_key_and_blocks_duplicate():
