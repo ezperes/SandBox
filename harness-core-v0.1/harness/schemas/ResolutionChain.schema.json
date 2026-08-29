@@ -1,0 +1,96 @@
+{
+  "$defs": {
+    "ChainType": {
+      "enum": [
+        "TACTICAL",
+        "TECHNICAL",
+        "NORMATIVE"
+      ],
+      "title": "ChainType",
+      "type": "string"
+    },
+    "ResolutionStatus": {
+      "enum": [
+        "RESOLVED",
+        "SAME_AS_TACTICAL",
+        "NOT_APPLICABLE_JUSTIFIED",
+        "UNRESOLVED"
+      ],
+      "title": "ResolutionStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "harness_contract_version": {
+      "default": "0.1",
+      "pattern": "^0\\.1$",
+      "title": "Harness Contract Version",
+      "type": "string"
+    },
+    "chain_type": {
+      "$ref": "#/$defs/ChainType"
+    },
+    "status": {
+      "$ref": "#/$defs/ResolutionStatus"
+    },
+    "authority_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Authority Ref"
+    },
+    "route_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Route Refs",
+      "type": "array"
+    },
+    "applicable_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Applicable Refs",
+      "type": "array"
+    },
+    "loaded_excerpt_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Loaded Excerpt Refs",
+      "type": "array"
+    },
+    "source_revision_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Source Revision Refs",
+      "type": "array"
+    },
+    "justification": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Justification"
+    }
+  },
+  "required": [
+    "chain_type",
+    "status"
+  ],
+  "title": "ResolutionChain",
+  "type": "object"
+}

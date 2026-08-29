@@ -1,0 +1,213 @@
+{
+  "$defs": {
+    "ChainType": {
+      "enum": [
+        "TACTICAL",
+        "TECHNICAL",
+        "NORMATIVE"
+      ],
+      "title": "ChainType",
+      "type": "string"
+    },
+    "ResolutionChain": {
+      "additionalProperties": false,
+      "properties": {
+        "harness_contract_version": {
+          "default": "0.1",
+          "pattern": "^0\\.1$",
+          "title": "Harness Contract Version",
+          "type": "string"
+        },
+        "chain_type": {
+          "$ref": "#/$defs/ChainType"
+        },
+        "status": {
+          "$ref": "#/$defs/ResolutionStatus"
+        },
+        "authority_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Authority Ref"
+        },
+        "route_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Route Refs",
+          "type": "array"
+        },
+        "applicable_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Applicable Refs",
+          "type": "array"
+        },
+        "loaded_excerpt_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Loaded Excerpt Refs",
+          "type": "array"
+        },
+        "source_revision_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Revision Refs",
+          "type": "array"
+        },
+        "justification": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Justification"
+        }
+      },
+      "required": [
+        "chain_type",
+        "status"
+      ],
+      "title": "ResolutionChain",
+      "type": "object"
+    },
+    "ResolutionStatus": {
+      "enum": [
+        "RESOLVED",
+        "SAME_AS_TACTICAL",
+        "NOT_APPLICABLE_JUSTIFIED",
+        "UNRESOLVED"
+      ],
+      "title": "ResolutionStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "harness_contract_version": {
+      "default": "0.1",
+      "pattern": "^0\\.1$",
+      "title": "Harness Contract Version",
+      "type": "string"
+    },
+    "authority_context_id": {
+      "title": "Authority Context Id",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "agent_id": {
+      "title": "Agent Id",
+      "type": "string"
+    },
+    "tactical_authority_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Tactical Authority Refs",
+      "type": "array"
+    },
+    "technical_authority_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Technical Authority Refs",
+      "type": "array"
+    },
+    "tactical_chain_trace": {
+      "$ref": "#/$defs/ResolutionChain"
+    },
+    "technical_chain_trace": {
+      "$ref": "#/$defs/ResolutionChain"
+    },
+    "normative_authority_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Normative Authority Refs",
+      "type": "array"
+    },
+    "normative_chain_trace": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ResolutionChain"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "allowed_scopes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Allowed Scopes",
+      "type": "array"
+    },
+    "forbidden_scopes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Forbidden Scopes",
+      "type": "array"
+    },
+    "competence_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Competence Refs",
+      "type": "array"
+    },
+    "registration_prerogatives": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Registration Prerogatives",
+      "type": "array"
+    },
+    "authority_snapshot_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Authority Snapshot Ref"
+    },
+    "resolved_at": {
+      "format": "date-time",
+      "title": "Resolved At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "authority_context_id",
+    "run_id",
+    "agent_id",
+    "tactical_authority_refs",
+    "technical_authority_refs",
+    "tactical_chain_trace",
+    "technical_chain_trace"
+  ],
+  "title": "AuthorityContext",
+  "type": "object"
+}

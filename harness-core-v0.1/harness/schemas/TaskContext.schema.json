@@ -1,0 +1,123 @@
+{
+  "$defs": {
+    "ReferenceSemantics": {
+      "enum": [
+        "POINTER_ONLY",
+        "MATERIALIZED_CONTEXT"
+      ],
+      "title": "ReferenceSemantics",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "harness_contract_version": {
+      "default": "0.1",
+      "pattern": "^0\\.1$",
+      "title": "Harness Contract Version",
+      "type": "string"
+    },
+    "task_context_id": {
+      "title": "Task Context Id",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "tarefa_trabalho_id": {
+      "title": "Tarefa Trabalho Id",
+      "type": "string"
+    },
+    "current_order": {
+      "title": "Current Order",
+      "type": "string"
+    },
+    "task_state_ref": {
+      "title": "Task State Ref",
+      "type": "string"
+    },
+    "authority_context_ref": {
+      "title": "Authority Context Ref",
+      "type": "string"
+    },
+    "workspace_ref": {
+      "title": "Workspace Ref",
+      "type": "string"
+    },
+    "bootstrap_trace_ref": {
+      "title": "Bootstrap Trace Ref",
+      "type": "string"
+    },
+    "tactical_context_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Tactical Context Refs",
+      "type": "array"
+    },
+    "technical_context_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Technical Context Refs",
+      "type": "array"
+    },
+    "normative_context_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Normative Context Refs",
+      "type": "array"
+    },
+    "procedural_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Procedural Refs",
+      "type": "array"
+    },
+    "knowledge_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Knowledge Refs",
+      "type": "array"
+    },
+    "risk_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Risk Refs",
+      "type": "array"
+    },
+    "memory_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Memory Refs",
+      "type": "array"
+    },
+    "supporting_ref_semantics": {
+      "$ref": "#/$defs/ReferenceSemantics",
+      "default": "POINTER_ONLY"
+    },
+    "built_at": {
+      "format": "date-time",
+      "title": "Built At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "task_context_id",
+    "run_id",
+    "tarefa_trabalho_id",
+    "current_order",
+    "task_state_ref",
+    "authority_context_ref",
+    "workspace_ref",
+    "bootstrap_trace_ref"
+  ],
+  "title": "TaskContext",
+  "type": "object"
+}

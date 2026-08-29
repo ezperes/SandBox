@@ -1,0 +1,96 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "harness_contract_version": {
+      "default": "0.1",
+      "pattern": "^0\\.1$",
+      "title": "Harness Contract Version",
+      "type": "string"
+    },
+    "agent_id": {
+      "title": "Agent Id",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "mission_ref": {
+      "title": "Mission Ref",
+      "type": "string"
+    },
+    "scope_ref": {
+      "title": "Scope Ref",
+      "type": "string"
+    },
+    "organizational_path_ref": {
+      "title": "Organizational Path Ref",
+      "type": "string"
+    },
+    "tactical_authority_ref": {
+      "title": "Tactical Authority Ref",
+      "type": "string"
+    },
+    "technical_authority_ref": {
+      "title": "Technical Authority Ref",
+      "type": "string"
+    },
+    "source_ref": {
+      "title": "Source Ref",
+      "type": "string"
+    },
+    "normative_authority_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Normative Authority Ref"
+    },
+    "capabilities_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Capabilities Ref"
+    },
+    "source_revision_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source Revision Ref"
+    },
+    "resolved_at": {
+      "format": "date-time",
+      "title": "Resolved At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "agent_id",
+    "name",
+    "mission_ref",
+    "scope_ref",
+    "organizational_path_ref",
+    "tactical_authority_ref",
+    "technical_authority_ref",
+    "source_ref"
+  ],
+  "title": "AgentIdentity",
+  "type": "object"
+}

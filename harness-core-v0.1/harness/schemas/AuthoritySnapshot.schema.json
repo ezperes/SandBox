@@ -1,0 +1,58 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "harness_contract_version": {
+      "default": "0.1",
+      "pattern": "^0\\.1$",
+      "title": "Harness Contract Version",
+      "type": "string"
+    },
+    "snapshot_id": {
+      "title": "Snapshot Id",
+      "type": "string"
+    },
+    "identity_source_revision_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Identity Source Revision Ref"
+    },
+    "tactical_source_revision_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Tactical Source Revision Refs",
+      "type": "array"
+    },
+    "technical_source_revision_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Technical Source Revision Refs",
+      "type": "array"
+    },
+    "normative_source_revision_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Normative Source Revision Refs",
+      "type": "array"
+    },
+    "captured_at": {
+      "format": "date-time",
+      "title": "Captured At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "snapshot_id"
+  ],
+  "title": "AuthoritySnapshot",
+  "type": "object"
+}
