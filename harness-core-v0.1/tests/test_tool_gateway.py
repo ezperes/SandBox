@@ -7,6 +7,7 @@ from harness.contracts import AuthorityContext, ChainType, ResolutionChain, Reso
 from harness.core.errors import HarnessResolutionError
 from harness.core.freshness import AuthorityFreshnessGate
 from harness.core.state import StateManager
+from harness.core.state.manager import IdempotencyStatus
 from harness.core.tools import ToolDescriptor, ToolGateway, ToolRegistry
 
 
@@ -34,19 +35,22 @@ def authority(*, allowed=None, forbidden=None, competences=None):
     )
 
 
-def gateway(descriptor, response=None):
-    registry = ToolRegistry()
-    adapter = FakeToolAdapter(response)
-    registry.register(descriptor, adapter)
-    source = InMemorySourceAdapter({
+def canonical_source():
+    return InMemorySourceAdapter({
         "AUT-T": {"revision_ref": "REV-1"},
         "AUT-X": {"revision_ref": "REV-1"},
         "AUT-N": {"revision_ref": "REV-1"},
     })
+
+
+def gateway(descriptor, response=None):
+    registry = ToolRegistry()
+    adapter = FakeToolAdapter(response)
+    registry.register(descriptor, adapter)
     return ToolGateway(
         registry,
         StateManager(InMemoryStateAdapter()),
-        freshness_gate=AuthorityFreshnessGate(source),
+        freshness_gate=AuthorityFreshnessGate(canonical_source()),
     ), adapter
 
 
@@ -113,6 +117,26 @@ def test_forbidden_scope_never_reaches_adapter_and_persists_deny():
     assert audit["error_code"] == "ACTION_FORBIDDEN"
 
 
+def test_side_effect_escalate_is_persisted_and_never_reaches_adapter():
+    descriptor = ToolDescriptor(tool_id="tool", action_scope="ops:change", side_effect=True, required_competence="OPS_ADMIN")
+    gw, adapter = gateway(descriptor)
+    with pytest.raises(HarnessResolutionError) as exc:
+        gw.execute(
+            run_id="R1",
+            authority=authority(allowed=["ops:change"]),
+            tool_id="tool",
+            payload={},
+            business_key="OPS-1",
+        )
+    assert "COMPETENCE_INSUFFICIENT" in str(exc.value)
+    assert adapter.calls == []
+    audit = only_audit(gw)
+    assert audit["status"] == "BLOCKED"
+    assert audit["outcome"] == "ESCALATE"
+    assert audit["decision"] == "ESCALATE"
+    assert audit["error_code"] == "COMPETENCE_INSUFFICIENT"
+
+
 def test_missing_competence_escalates_before_tool_call():
     descriptor = ToolDescriptor(tool_id="tool", action_scope="ops:change", required_competence="OPS_ADMIN")
     gw, adapter = gateway(descriptor)
@@ -134,6 +158,37 @@ def test_human_approval_gate_precedes_side_effect():
     result = gw.execute(run_id="R1", authority=auth, tool_id="tool", payload={}, business_key="PUB-1", approved=True)
     assert result.decision.value == "ALLOW"
     assert len(adapter.calls) == 1
+
+
+def test_side_effect_toolport_failure_persists_failed_and_unknown_ledger():
+    class RaisingAdapter:
+        def __init__(self): self.calls = []
+        def invoke(self, tool_id, payload):
+            self.calls.append((tool_id, dict(payload)))
+            raise RuntimeError("provider timeout")
+
+    descriptor = ToolDescriptor(tool_id="tool.fail", action_scope="ops:write", side_effect=True)
+    registry = ToolRegistry()
+    adapter = RaisingAdapter()
+    registry.register(descriptor, adapter)
+    manager = StateManager(InMemoryStateAdapter())
+    gw = ToolGateway(registry, manager, freshness_gate=AuthorityFreshnessGate(canonical_source()))
+
+    with pytest.raises(RuntimeError, match="provider timeout"):
+        gw.execute(
+            run_id="R1",
+            authority=authority(allowed=["ops:write"]),
+            tool_id="tool.fail",
+            payload={"x": 1},
+            business_key="FAIL-1",
+        )
+    assert len(adapter.calls) == 1
+    audit = only_audit(gw)
+    assert audit["status"] == "FAILED"
+    assert audit["outcome"] == "TOOLPORT_ERROR"
+    key = "R1:tool.fail:FAIL-1"
+    assert manager.get_side_effect(key).status == IdempotencyStatus.UNKNOWN
+    assert manager.get_side_effect(key).reconciliation_required is True
 
 
 def test_required_evidence_is_enforced_after_execution():
