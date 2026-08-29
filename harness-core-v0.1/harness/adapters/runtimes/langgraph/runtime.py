@@ -7,7 +7,7 @@ from harness.contracts import HarnessRun, RunState, RunStatus
 
 
 class CompiledGraphPort(Protocol):
-    """Minimal LangGraph-compatible surface used by the adapter."""
+    """Minimal surface satisfied by a compiled LangGraph StateGraph."""
 
     def invoke(self, input: dict[str, Any] | None, config: dict[str, Any]) -> dict[str, Any]: ...
 
@@ -64,8 +64,11 @@ class LangGraphAdapter:
     def resume(self, run: HarnessRun, state: RunState) -> RunState:
         if state.run_id != run.run_id or state.run_state_id != run.run_state_ref:
             raise ValueError("canonical run state does not belong to run")
-        # LangGraph resumes an existing thread when invoked with None. Canonical
-        # side-effect idempotency remains outside the runtime in StatePort.
+        # RuntimePort.resume carries no external resume payload in V0.1. The
+        # adapter therefore resumes LangGraph static interrupts/breakpoints by
+        # re-invoking the same persisted thread with None. Dynamic interrupt()
+        # requires Command(resume=<payload>) and a future explicit port contract.
+        # Canonical side-effect idempotency remains outside the runtime in StatePort.
         native = self.graph.invoke(None, self._config(run))
         if not isinstance(native, dict):
             raise TypeError("LangGraph adapter requires dict-like graph state")
