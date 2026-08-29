@@ -17,10 +17,16 @@
 - Added tests proving a changed tactical revision triggers tactical-only context rebuild while technical context is preserved; an unresolvable changed authority prevents any runtime resume call.
 - First T10 CI attempt failed: test assumed Bootstrap materialized only `loaded_excerpt_refs`, but canonical Bootstrap also carries the authority route ref (`AUT-T`). Cause was an over-specific test expectation, not production behavior. Correct solution: assert semantic inclusion/replacement (`CTX-T1` → `CTX-T2`) and preservation of the unaffected technical refs rather than an invalid exact list.
 - Final CI run #140: `56 passed in 0.49s`; 17 schemas exported; schema drift clean; job success.
-- No canonical contracts or schemas changed.
+- Implemented auditable persistence of freshness/revalidation evidence before resume. Added internal `RevalidationAuditRecord`, StatePort save/load methods, InMemoryStateAdapter storage, and linkage from canonical `RunState.decision_refs` to the persisted `RV-*` record.
+- The persisted record captures: previous authority/task-context refs, the newly resolved `AuthoritySnapshot`, the new authority context ref, serialized `TaskContext`, Bootstrap trace, changed chains, identity-change flag and boundary name.
+- `StateManager.resume()` now persists that revalidation record and the RunState pointer before invoking `RuntimePort.resume()`. A runtime-facing test proves the audit record already exists when the adapter is entered.
+- First audit-persistence CI attempt failed because an older `PassFreshnessGate` test double returned only authority/context IDs and did not satisfy the now-explicit preparation contract (`authority_snapshot`, `changed_chains`, `identity_changed`, Bootstrap trace). Production behavior was correct. The test double was upgraded to represent the actual freshness preparation interface.
+- Final audit-persistence CI run #149: `57 passed in 0.58s`; 17 schemas exported; schema drift clean; job success.
+- No canonical Pydantic contract or generated schema changed; the new revalidation record remains an internal Core/StatePort persistence artifact in V0.1.
 
 ## failed attempt → cause → correct solution
 
 1. Local clone/test → container could not resolve `github.com` → use GitHub Actions on the PR merge ref as executable evidence.
 2. Initial PR creation before first branch commit → GitHub correctly rejected because there were no commits between base and head → create the work-contract commit, then open the draft PR.
 3. T10 test expected `tactical_context_refs == [CTX-T1]` → Bootstrap legitimately also materializes route ref `AUT-T` → test the architectural invariant (old excerpt replaced, new excerpt present, unaffected chain preserved) instead of an incorrect exact list.
+4. Legacy `PassFreshnessGate` test double omitted persisted-revalidation inputs → new resume boundary correctly requires a complete preparation record → update the test double to the real preparation shape instead of weakening production persistence.
