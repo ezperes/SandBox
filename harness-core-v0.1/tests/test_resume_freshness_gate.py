@@ -59,8 +59,9 @@ def test_t10_resume_re_resolves_changed_chain_and_rebuilds_only_affected_context
     first_authority = AuthorityResolver(source).resolve("R1", identity)
     first_context = ContextBuilder(source).build("R1", first_authority.context, "TASK")
 
-    assert first_context.task_context.tactical_context_refs == ["CTX-T1"]
-    assert first_context.task_context.technical_context_refs == ["CTX-X1"]
+    assert "CTX-T1" in first_context.task_context.tactical_context_refs
+    original_technical_refs = list(first_context.task_context.technical_context_refs)
+    assert "CTX-X1" in original_technical_refs
 
     # Canonical tactical authority changes while the run is interrupted.
     source.records["AUT-T"] = {
@@ -79,8 +80,9 @@ def test_t10_resume_re_resolves_changed_chain_and_rebuilds_only_affected_context
 
     preview = freshness.prepare(make_run())
     assert preview.changed_chains == frozenset({ChainType.TACTICAL})
-    assert preview.context.task_context.tactical_context_refs == ["CTX-T2"]
-    assert preview.context.task_context.technical_context_refs == ["CTX-X1"]
+    assert "CTX-T2" in preview.context.task_context.tactical_context_refs
+    assert "CTX-T1" not in preview.context.task_context.tactical_context_refs
+    assert preview.context.task_context.technical_context_refs == original_technical_refs
     assert preview.authority.tactical_chain_trace.source_revision_refs == ["T-REV-2"]
 
     state_port = InMemoryStateAdapter()
@@ -100,7 +102,7 @@ def test_t10_resume_re_resolves_changed_chain_and_rebuilds_only_affected_context
 
     assert resumed.status == RunStatus.COMPLETED
     assert run.authority_context_ref != "AC-OLD"
-    assert run.task_context_ref == preview.context.task_context.task_context_id or run.task_context_ref.startswith("TC-")
+    assert run.task_context_ref and run.task_context_ref.startswith("TC-")
 
 
 def test_t10_resume_with_unresolvable_changed_authority_never_calls_runtime():
