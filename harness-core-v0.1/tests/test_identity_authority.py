@@ -60,6 +60,16 @@ def test_empty_intersection_authorizes_nothing():
     assert AuthorityResolver.decide(ctx, "TECH_ONLY") == Decision.ESCALATE
 
 
+def test_explicit_empty_allow_list_is_revocation_not_absence():
+    s = source()
+    s.records["AUT-X"]["allowed_scopes"] = []
+    identity = IdentityResolver(s).resolve("LIVRO:A1")
+    ctx = AuthorityResolver(s).resolve("RUN-REVOKED", identity).context
+    assert ctx.allowed_scopes == []
+    assert AuthorityResolver.decide(ctx, "RETURN_CREATE") == Decision.ESCALATE
+    assert AuthorityResolver.decide(ctx, "ORDER_READ") == Decision.ESCALATE
+
+
 def test_no_declared_allow_list_is_unrestricted_except_explicit_prohibitions():
     s = source()
     s.records["AUT-T"].pop("allowed_scopes")
