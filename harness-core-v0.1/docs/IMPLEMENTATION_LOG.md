@@ -41,3 +41,16 @@
 - O checkpoint canônico permanece independente do mecanismo de checkpoint de qualquer Runtime Adapter.
 - Testes adicionados para persistência por valor, checkpoint+resume, rejeição de checkpoint cruzado e idempotência de side effects.
 - Decisão: idempotência foi mantida no `StatePort`, e não no Runtime, para que a proteção sobreviva à troca de LangGraph/n8n/outro executor.
+
+## Incremento 5
+- Objetivo: implementar Tool Registry/Gateway + Policy/Risk/Approval Gate antes de qualquer boundary externo.
+- Criado `ToolDescriptor` com `tool_id`, escopo de ação, risco, side effect, competência requerida, aprovação, evidência e exigência de idempotência.
+- `ToolRegistry` exige registro explícito e rejeita duplicidade; tool não registrada falha fechado com `TOOL_UNAVAILABLE`.
+- `ToolGateway` consulta `AuthorityResolver.decide` antes de chamar `ToolPort`.
+- Ordem de gate implementada: ferramenta registrada → autoridade/escopo → competência → aprovação → business key/idempotência → execução → evidência requerida.
+- Proibição explícita termina em `ACTION_FORBIDDEN`; competência insuficiente em `COMPETENCE_INSUFFICIENT`; aprovação pendente em `APPROVAL_REQUIRED`; side effect sem business key em `SIDE_EFFECT_UNKNOWN`.
+- Side effect só chama o adapter após claim de idempotência; repetição da mesma operação/business key é bloqueada por `RETRY_BLOCKED` antes de nova chamada externa.
+- `FakeToolAdapter` registra chamadas para provar em teste que DENY/ESCALATE/REQUIRE_APPROVAL/erros de idempotência não atravessam o boundary.
+- Evidência obrigatória ausente após execução retorna `VERIFICATION_FAILED`, preservando a distinção entre resultado produzido e resultado aceitável.
+- Testes adicionados para side effect sem chave, duplicidade, proibição, competência, aprovação humana, evidência e tool ausente.
+- Decisão: `ToolDescriptor` permaneceu inicialmente como tipo interno do Core, sem entrar ainda no bundle de contratos Pydantic, para não alterar os contratos canônicos durante este incremento sem a migração/versionamento correspondente. A formalização no bundle será tratada em etapa específica de contratos.
