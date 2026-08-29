@@ -1,88 +1,161 @@
 # Auditoria Pós-Incrementos 1–7 — Harness Core V0.1
 
-Data: 2026-08-29
-Status: ATIVA — GATE ANTES DA PRIMEIRA PROVA END-TO-END
+Data: 2026-08-29  
+Status: **ATIVA — BLOQUEADOR ARQUITETURAL ANTES DO E2E**
 
 ## Objetivo
-Revisar conjuntamente os Incrementos 1–7 antes da primeira prova end-to-end, procurando divergências entre contratos canônicos, decisões arquiteturais, implementação e afirmações de validação.
 
-## Retificações já executadas
+Revisar conjuntamente contratos, implementação, adapters, CI e testes arquiteturais antes da primeira prova end-to-end. Esta versão incorpora o GT paralelo A3/B1/CI-01/ARCH-01.
 
-### R1 — `NAO_APLICAVEL_JUSTIFICADO` sem justificativa real
-**Problema:** o AuthorityResolver aceitava `NAO_APLICAVEL_JUSTIFICADO` sem texto justificativo e criava a justificativa genérica `explicitly justified`.
+## Retificações concluídas
 
-**Correção:** agora a forma exige `NAO_APLICAVEL_JUSTIFICADO:<justificativa não vazia>`; ausência de justificativa falha fechado com `AUTHORITY_UNRESOLVED`.
+### R1 — `NAO_APLICAVEL_JUSTIFICADO`
 
-### R2 — Runtime podia injetar referências canônicas
-**Problema:** o LangGraphAdapter aceitava do estado nativo `decision_refs` e `canonical_checkpoint_ref`.
+Forma sem justificativa real não é aceita. Ausência de justificativa falha fechado com `AUTHORITY_UNRESOLVED`.
 
-**Correção:** `decision_refs` e `checkpoint_ref` passam a vir exclusivamente do estado canônico anterior/Core. Valores homônimos produzidos pelo runtime são ignorados.
+### R2 — refs canônicos vindos do runtime
 
-## Itens obrigatórios antes do E2E
+`decision_refs` e `checkpoint_ref` canônicos só podem ser preservados do estado canônico/Core; valores homônimos do runtime são ignorados.
 
-### A1 — Autoridade por interseção — CONCLUÍDO EM 2026-08-29
-`AuthorityResolver` calcula allow-lists efetivos pela interseção das cadeias aplicáveis que declaram `allowed_scopes`. Cadeias sem allow-list não acrescentam restrição positiva; ausência total de whitelist é representada por `*`; interseção vazia não autoriza nenhuma ação automaticamente. Proibição explícita continua prevalecendo.
+## Gates anteriores
 
-Regressões cobertas: ação comum → `ALLOW`; ação exclusiva de uma cadeia → `ESCALATE`; interseção vazia → nenhuma autorização comum; ausência de whitelist → `*`; `MESMA_CADEIA_TATICA` preserva o conjunto tático.
+### A1 — Autoridade por interseção — `CLOSED`
 
-### A2 — Ledger idempotente — CONCLUÍDO EM 2026-08-29
-O claim binário foi substituído por ledger de execução com estados `PENDING | COMPLETED | FAILED | UNKNOWN`, preservando resultado, `evidence_refs`, erro e necessidade de reconciliação.
+`allowed_scopes` efetivo é a interseção das allow-lists declaradas pelas cadeias aplicáveis. Cadeia sem allow-list não acrescenta whitelist; ausência total é `*`; interseção vazia autoriza nada; proibição explícita prevalece.
 
-Semântica aplicada:
-- `PENDING`: efeito em andamento/indeterminado; retry automático bloqueado;
-- `COMPLETED`: efeito comprovadamente concluído; repetição bloqueada;
-- `FAILED`: falha conhecida; retry exige decisão explícita;
-- `UNKNOWN`: não é possível determinar se o efeito externo ocorreu; retry automático bloqueado até reconciliação.
+Regra preservada: `TÁTICA ∩ TÉCNICA ∩ NORMATIVA`.
 
-`ToolGateway` integra o ledger ao boundary de side effects. Timeout/exceção após atravessar o boundary não é tratado como simples falha segura: o registro pode ir para `UNKNOWN` para evitar duplicação externa.
+### A2 — Ledger idempotente — `CLOSED`
 
-Documentação específica: `docs/A2_IDEMPOTENCY_LEDGER_IMPLEMENTATION_LOG.md` e `docs/A2_IDEMPOTENCY_LEDGER_IMPLEMENTATION_REPORT.md`.
+Ledger com `PENDING | COMPLETED | FAILED | UNKNOWN`, resultado/evidência, erro e reconciliação. Retry cego é bloqueado quando operação está pendente, concluída ou com outcome desconhecido.
 
-### A3 — LangGraph ainda não foi validado contra a biblioteca real
-Existe `LangGraphAdapter` atrás de superfície mínima (`CompiledGraphPort`) e os testes atuais usam StubGraph. O Incremento 7 prova boundary/tradução compatível, não integração física com pacote/checkpointer/interrupt reais.
+### A3 — LangGraph físico real — `CLOSED`
 
-**Ação:** adicionar teste de integração com versão fixada do LangGraph antes de declarar runtime físico comprovado.
+Comprovado contra `langgraph==1.2.11` real:
+- `StateGraph` real e compilado;
+- `MemorySaver` real;
+- static interrupt/breakpoint;
+- resume do mesmo thread;
+- `run_id → configurable.thread_id`;
+- checkpoint técnico distinto do checkpoint canônico;
+- runtime sem autoridade/identidade institucional.
 
-### A4 — OpenAIResponsesAdapter ainda não teve chamada live
-O adapter traduz uma superfície Responses compatível por cliente injetado; testes usam stub.
+A3 comprova o **mecanismo físico do adapter**, não a segurança semântica do resume canônico. T10 permanece aberto/contradito.
 
-**Ação:** na prova E2E executar chamada real ou declarar explicitamente que o E2E usa `FakeModelAdapter`, mantendo teste live como gate separado.
+### A4 — Provider live — `OPEN`
 
-### A5 — Semântica de refs de tarefa — CONCLUÍDO EM 2026-08-29
-Decisão canônica V0.1: `procedural_refs`, `knowledge_refs`, `risk_refs` e `memory_refs` são **apontadores (`POINTER_ONLY`)**, não conteúdo já materializado no Active Context.
+OpenAIResponsesAdapter continua comprovado por superfície compatível/stub, não chamada live. Um E2E futuro deve declarar explicitamente FakeModelAdapter ou executar provider real. A4 não é o bloqueador prioritário atual porque T10/T11 impedem avanço seguro antes dele.
 
-Consequências obrigatórias:
-- esses quatro campos não consomem `max_context_tokens` apenas por existirem no `TaskContext`;
-- o `ContextBuilder` não lê suas fontes automaticamente;
-- eles não entram em `token_usage`/proveniência enquanto permanecem apenas apontadores;
-- para virarem conteúdo ativo, devem passar por uma etapa explícita de materialização, que então deve aplicar budget, proveniência, revisão e deduplicação;
-- conteúdo materializado não pode ser disfarçado nesses campos para escapar do budget.
+### A5 — Supporting refs — `CLOSED`
 
-O contrato ganhou `ReferenceSemantics` e `TaskContext.supporting_ref_semantics`, fixado em `POINTER_ONLY` na V0.1. Marcar esses refs como `MATERIALIZED_CONTEXT` dentro de `TaskContext` falha fechado. Testes provam que as fontes desses refs não são lidas e que não alteram o budget ativo.
+`procedural_refs`, `knowledge_refs`, `risk_refs`, `memory_refs` são `POINTER_ONLY` na V0.1:
+- não consomem budget apenas por existirem;
+- não são lidos automaticamente pelo ContextBuilder;
+- não entram em provenance/token_usage enquanto ponteiros;
+- materialização futura deve passar por pipeline explícito com budget, revisão, deduplicação e proveniência.
 
-## Melhorias recomendadas, não bloqueantes isoladamente
+## Melhorias B do audit anterior
 
-### B1 — Erro compartilhado
-`HarnessResolutionError` nasceu no pacote `core.identity` e passou a ser reutilizado por autoridade, estado e tools. Mover para `core.errors` reduz acoplamento semântico indevido.
+### B1 — erro compartilhado — `CLOSED`
 
-### B2 — ToolDescriptor ainda é contrato interno
-Antes de interfaces externas estáveis convém versionar/formalizar `ToolDescriptor` em contrato Pydantic se ele atravessar boundaries, persistência ou configuração declarativa.
+`HarnessResolutionError` agora vive em `core.errors`, com re-export compatível por `core.identity`. Teste dedicado preserva classe/payload/string.
 
-### B3 — Estado técnico ≠ conclusão institucional
-O LangGraphAdapter traduz `harness_status=COMPLETED` em `RunStatus.COMPLETED`. Na composição E2E, conclusão institucional só deve ocorrer após Evidence + VerificationResult + gates finais.
+### B2 — ToolDescriptor interno — `OPEN / NON-BLOCKING`
 
-### B4 — Resume instruction
-`Checkpoint.resume_instruction` é persistido, mas o `StateManager.resume()` ainda não o entrega explicitamente ao RuntimePort. Definir se é orientação auditável apenas para Core/coordenador ou parte obrigatória do payload de retomada.
+Formalizar como contrato canônico somente se passar a cruzar boundary externo, persistência ou configuração declarativa.
 
-### B5 — Verificação de schemas gerados
-A CI executa `git diff --exit-code -- harness/schemas`, mas arquivos novos não rastreados podem escapar desse check. Endurecer a CI para também verificar `git status --porcelain -- harness/schemas` antes de considerar o bundle de schemas integralmente protegido contra drift.
+### B3 — estado técnico ≠ conclusão institucional — `OPEN / ARCHITECTURAL RULE`
 
-## Gate de saída desta auditoria
-Antes da primeira prova E2E completa:
-1. ~~A1 — interseção de autoridade~~ CONCLUÍDO;
-2. ~~A2 — ledger idempotente com estado~~ CONCLUÍDO;
-3. ~~A5 — semântica/budget/proveniência dos refs~~ CONCLUÍDO;
-4. A3 — integração física com LangGraph real;
-5. A4 — declarar FakeModelAdapter ou executar provider live.
+`harness_status=COMPLETED` do runtime não pode encerrar institucionalmente uma Tarefa sem Evidence + VerificationResult + gates finais. Deve ser testado na futura composição E2E.
 
-As retificações R1 e R2 permanecem cobertas por testes de regressão.
+### B4 — resume instruction — `OPEN`
+
+`Checkpoint.resume_instruction` é persistido, mas seu papel no futuro coordenador/revalidation gate precisa ser formalizado. Não deve virar fonte autônoma de autoridade do runtime.
+
+### B5 — schema drift untracked — `CLOSED`
+
+Schemas canônicos foram materializados/versionados: 17 arquivos + `all.schemas.json`.
+
+CI agora executa:
+
+`pytest → export_schemas.py → check_schema_drift.py`
+
+`check_schema_drift.py` detecta mudanças tracked, arquivos `??` e arquivos `!!` em `harness/schemas`.
+
+## Nova auditoria arquitetural T01–T12
+
+| T | Estado pós-GT | Observação |
+|---|---|---|
+| T01 | `PARTIAL` | mecanismos unitários existem; cenário completo não provado |
+| T02 | `PARTIAL` | cadeias/proveniência separadas; sem prova completa objetivo/método |
+| T03 | `NOT_PROVEN` | contrato CrossDomainEvent existe; ciclo multidomínio não executável |
+| T04 | `PARTIAL` | DENY/fail-closed antes de tool existe; cenário completo não provado |
+| T05 | `PARTIAL` | conflito por interseção pode ESCALATE; alternativa técnica não materializada |
+| T06 | `PARTIAL` | competência bloqueia execução; falta Delegation Gate |
+| T07 | `PARTIAL` | rebuild seletivo existe; falta detector de revision drift |
+| T08 | `NOT_PROVEN` | falta mudança Fração/GT/domínio governada |
+| T09 | `NOT_PROVEN` | falta delegação cross-provider + Instruction Adapters |
+| T10 | `CONTRADICTED` | resume entra no runtime sem revalidar/reconstruir contexto |
+| T11 | `CONTRADICTED` | ToolGateway pode usar AuthorityContext stale |
+| T12 | `PARTIAL` | ESCALATE existe; trace completo/persistido de conflito não |
+
+Totais: `PROVEN=0 | PARTIAL=7 | NOT_PROVEN=3 | CONTRADICTED=2`.
+
+## Bloqueadores críticos atuais
+
+### T10 — Resume canônico
+
+Fluxo atual de `StateManager.resume()`:
+
+`load checkpoint → load RunState → validar vínculo → runtime.resume(run, state) → persistir resultado`
+
+Não há passo obrigatório de:
+
+`freshness das fontes → re-resolver autoridade → detectar cadeias alteradas → re-bootstrap/rebuild Active Context`
+
+Portanto um runtime físico correto pode retomar sob contexto institucional obsoleto.
+
+### T11 — Fonte canônica muda durante Run
+
+`AuthoritySnapshot` captura revisions durante resolução, mas `ToolGateway.execute()` recebe um `AuthorityContext` pronto e decide apenas sobre ele. Não existe gate que compare as revisões desse snapshot com a fonte atual antes de novo side effect.
+
+Consequência: revogação/mudança pós-resolução pode não ser percebida antes de ação externa subsequente.
+
+## Invariantes preservadas pelo GT
+
+- contratos continuam mais estáveis que frameworks;
+- Core não depende semanticamente de LangGraph/OpenAI/n8n;
+- LangGraph permanece extra opcional;
+- runtime/provider não ganham autoridade institucional;
+- checkpoint técnico não vira fonte canônica;
+- provider/modelo não altera identidade;
+- side effects continuam atrás de gates + ledger;
+- `POINTER_ONLY` não regrediu;
+- B1 não alterou códigos/decisões;
+- CI endurecida não mascara drift.
+
+## Novos débitos e oportunidades
+
+1. Implementar Core-owned freshness/revalidation gate para T10/T11.
+2. Criar Delegation Gate/Port + contrato operacional antes de T06/T08/T09.
+3. Implementar roteamento/reconciliação de obrigações CrossDomainEvent e gate de conclusão global para T03.
+4. Persistir `DecisionTrace`/conflito para T12.
+5. Avaliar pin/lock da versão de Pydantic usada para gerar schemas; o checker é fail-closed, mas faixa ampla reduz determinismo bit-a-bit entre ambientes.
+6. Definir evolução contratual se dynamic LangGraph `interrupt()` com `Command(resume=...)` for necessário.
+7. Checkpointer durável é decisão futura de deployment, não requisito para prova semântica A3.
+
+## Gate de saída
+
+O Harness **não** está autorizado a seguir diretamente para E2E.
+
+`HARNESS STATUS = ARCHITECTURAL_BLOCKER`
+
+### Próximo passo único
+
+`RUN-REVALIDATION-GATE`
+
+Especificar por testes e implementar no Core um boundary obrigatório antes de resume e side effect relevante:
+
+`revision/freshness → detectar delta → preservar snapshot histórico → re-resolver autoridade → rebuild seletivo de contexto → ESCALATE se não seguro → executar boundary`
+
+Nenhum runtime/provider pode executar essa função como fonte institucional.
