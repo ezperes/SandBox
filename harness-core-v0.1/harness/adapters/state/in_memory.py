@@ -49,6 +49,11 @@ class InMemoryStateAdapter:
                 raise KeyError(revalidation_id)
             return deepcopy(self._revalidation_records[revalidation_id])
 
+    def list_revalidation_records(self, run_id: str) -> list[dict[str, Any]]:
+        with self._lock:
+            records = [deepcopy(record) for record in self._revalidation_records.values() if record.get("run_id") == run_id]
+        return sorted(records, key=lambda record: (record.get("created_at") or "", record.get("revalidation_id") or ""))
+
     def create_idempotency_record(self, key: str, record: dict[str, Any]) -> bool:
         if not key.strip():
             raise ValueError("idempotency key must be explicit")
