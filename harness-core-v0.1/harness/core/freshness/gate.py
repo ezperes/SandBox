@@ -59,18 +59,20 @@ class AuthorityFreshnessGate:
                 self.identity.source_ref,
             )
 
-        current = IdentityResolver(self.source).resolve(self.identity.source_ref)
-        current_revision = str(current.source_revision_ref or "").strip()
+        try:
+            raw = self.source.read(self.identity.source_ref)
+        except Exception as exc:
+            raise HarnessResolutionError(
+                HarnessErrorCode.IDENTITY_UNRESOLVED,
+                "identity freshness source cannot be read",
+                self.identity.source_ref,
+            ) from exc
+
+        current_revision = str(raw.get("revision_ref") or "").strip()
         if not current_revision:
             raise HarnessResolutionError(
                 HarnessErrorCode.IDENTITY_UNRESOLVED,
                 "identity freshness source has no revision_ref",
-                self.identity.source_ref,
-            )
-        if current.agent_id != self.identity.agent_id:
-            raise HarnessResolutionError(
-                HarnessErrorCode.IDENTITY_UNRESOLVED,
-                "canonical identity agent changed since authority resolution",
                 self.identity.source_ref,
             )
         if current_revision != self.identity.source_revision_ref:
@@ -80,6 +82,14 @@ class AuthorityFreshnessGate:
                     "identity is stale: expected revision "
                     f"{self.identity.source_revision_ref!r}, current revision {current_revision!r}"
                 ),
+                self.identity.source_ref,
+            )
+
+        current = IdentityResolver(self.source).resolve(self.identity.source_ref)
+        if current.agent_id != self.identity.agent_id:
+            raise HarnessResolutionError(
+                HarnessErrorCode.IDENTITY_UNRESOLVED,
+                "canonical identity agent changed since authority resolution",
                 self.identity.source_ref,
             )
 
