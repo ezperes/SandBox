@@ -1,0 +1,1776 @@
+{
+  "AgentIdentity": {
+    "additionalProperties": false,
+    "properties": {
+      "harness_contract_version": {
+        "default": "0.1",
+        "pattern": "^0\\.1$",
+        "title": "Harness Contract Version",
+        "type": "string"
+      },
+      "agent_id": {
+        "title": "Agent Id",
+        "type": "string"
+      },
+      "name": {
+        "title": "Name",
+        "type": "string"
+      },
+      "mission_ref": {
+        "title": "Mission Ref",
+        "type": "string"
+      },
+      "scope_ref": {
+        "title": "Scope Ref",
+        "type": "string"
+      },
+      "organizational_path_ref": {
+        "title": "Organizational Path Ref",
+        "type": "string"
+      },
+      "tactical_authority_ref": {
+        "title": "Tactical Authority Ref",
+        "type": "string"
+      },
+      "technical_authority_ref": {
+        "title": "Technical Authority Ref",
+        "type": "string"
+      },
+      "source_ref": {
+        "title": "Source Ref",
+        "type": "string"
+      },
+      "normative_authority_ref": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Normative Authority Ref"
+      },
+      "capabilities_ref": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Capabilities Ref"
+      },
+      "source_revision_ref": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Source Revision Ref"
+      },
+      "resolved_at": {
+        "format": "date-time",
+        "title": "Resolved At",
+        "type": "string"
+      }
+    },
+    "required": [
+      "agent_id",
+      "name",
+      "mission_ref",
+      "scope_ref",
+      "organizational_path_ref",
+      "tactical_authority_ref",
+      "technical_authority_ref",
+      "source_ref"
+    ],
+    "title": "AgentIdentity",
+    "type": "object"
+  },
+  "ResolutionChain": {
+    "$defs": {
+      "ChainType": {
+        "enum": [
+          "TACTICAL",
+          "TECHNICAL",
+          "NORMATIVE"
+        ],
+        "title": "ChainType",
+        "type": "string"
+      },
+      "ResolutionStatus": {
+        "enum": [
+          "RESOLVED",
+          "SAME_AS_TACTICAL",
+          "NOT_APPLICABLE_JUSTIFIED",
+          "UNRESOLVED"
+        ],
+        "title": "ResolutionStatus",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "harness_contract_version": {
+        "default": "0.1",
+        "pattern": "^0\\.1$",
+        "title": "Harness Contract Version",
+        "type": "string"
+      },
+      "chain_type": {
+        "$ref": "#/$defs/ChainType"
+      },
+      "status": {
+        "$ref": "#/$defs/ResolutionStatus"
+      },
+      "authority_ref": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Authority Ref"
+      },
+      "route_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Route Refs",
+        "type": "array"
+      },
+      "applicable_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Applicable Refs",
+        "type": "array"
+      },
+      "loaded_excerpt_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Loaded Excerpt Refs",
+        "type": "array"
+      },
+      "source_revision_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Source Revision Refs",
+        "type": "array"
+      },
+      "justification": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Justification"
+      }
+    },
+    "required": [
+      "chain_type",
+      "status"
+    ],
+    "title": "ResolutionChain",
+    "type": "object"
+  },
+  "AuthoritySnapshot": {
+    "additionalProperties": false,
+    "properties": {
+      "harness_contract_version": {
+        "default": "0.1",
+        "pattern": "^0\\.1$",
+        "title": "Harness Contract Version",
+        "type": "string"
+      },
+      "snapshot_id": {
+        "title": "Snapshot Id",
+        "type": "string"
+      },
+      "identity_source_revision_ref": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Identity Source Revision Ref"
+      },
+      "tactical_source_revision_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Tactical Source Revision Refs",
+        "type": "array"
+      },
+      "technical_source_revision_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Technical Source Revision Refs",
+        "type": "array"
+      },
+      "normative_source_revision_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Normative Source Revision Refs",
+        "type": "array"
+      },
+      "captured_at": {
+        "format": "date-time",
+        "title": "Captured At",
+        "type": "string"
+      }
+    },
+    "required": [
+      "snapshot_id"
+    ],
+    "title": "AuthoritySnapshot",
+    "type": "object"
+  },
+  "AuthorityContext": {
+    "$defs": {
+      "ChainType": {
+        "enum": [
+          "TACTICAL",
+          "TECHNICAL",
+          "NORMATIVE"
+        ],
+        "title": "ChainType",
+        "type": "string"
+      },
+      "ResolutionChain": {
+        "additionalProperties": false,
+        "properties": {
+          "harness_contract_version": {
+            "default": "0.1",
+            "pattern": "^0\\.1$",
+            "title": "Harness Contract Version",
+            "type": "string"
+          },
+          "chain_type": {
+            "$ref": "#/$defs/ChainType"
+          },
+          "status": {
+            "$ref": "#/$defs/ResolutionStatus"
+          },
+          "authority_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Authority Ref"
+          },
+          "route_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Route Refs",
+            "type": "array"
+          },
+          "applicable_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Applicable Refs",
+            "type": "array"
+          },
+          "loaded_excerpt_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Loaded Excerpt Refs",
+            "type": "array"
+          },
+          "source_revision_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Revision Refs",
+            "type": "array"
+          },
+          "justification": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Justification"
+          }
+        },
+        "required": [
+          "chain_type",
+          "status"
+        ],
+        "title": "ResolutionChain",
+        "type": "object"
+      },
+      "ResolutionStatus": {
+        "enum": [
+          "RESOLVED",
+          "SAME_AS_TACTICAL",
+          "NOT_APPLICABLE_JUSTIFIED",
+          "UNRESOLVED"
+        ],
+        "title": "ResolutionStatus",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "harness_contract_version": {
+        "default": "0.1",
+        "pattern": "^0\\.1$",
+        "title": "Harness Contract Version",
+        "type": "string"
+      },
+      "authority_context_id": {
+        "title": "Authority Context Id",
+        "type": "string"
+      },
+      "run_id": {
+        "title": "Run Id",
+        "type": "string"
+      },
+      "agent_id": {
+        "title": "Agent Id",
+        "type": "string"
+      },
+      "tactical_authority_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Tactical Authority Refs",
+        "type": "array"
+      },
+      "technical_authority_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Technical Authority Refs",
+        "type": "array"
+      },
+      "tactical_chain_trace": {
+        "$ref": "#/$defs/ResolutionChain"
+      },
+      "technical_chain_trace": {
+        "$ref": "#/$defs/ResolutionChain"
+      },
+      "normative_authority_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Normative Authority Refs",
+        "type": "array"
+      },
+      "normative_chain_trace": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/ResolutionChain"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "allowed_scopes": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Allowed Scopes",
+        "type": "array"
+      },
+      "forbidden_scopes": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Forbidden Scopes",
+        "type": "array"
+      },
+      "competence_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Competence Refs",
+        "type": "array"
+      },
+      "registration_prerogatives": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Registration Prerogatives",
+        "type": "array"
+      },
+      "authority_snapshot_ref": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Authority Snapshot Ref"
+      },
+      "resolved_at": {
+        "format": "date-time",
+        "title": "Resolved At",
+        "type": "string"
+      }
+    },
+    "required": [
+      "authority_context_id",
+      "run_id",
+      "agent_id",
+      "tactical_authority_refs",
+      "technical_authority_refs",
+      "tactical_chain_trace",
+      "technical_chain_trace"
+    ],
+    "title": "AuthorityContext",
+    "type": "object"
+  },
+  "TaskContext": {
+    "$defs": {
+      "ReferenceSemantics": {
+        "enum": [
+          "POINTER_ONLY",
+          "MATERIALIZED_CONTEXT"
+        ],
+        "title": "ReferenceSemantics",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "harness_contract_version": {
+        "default": "0.1",
+        "pattern": "^0\\.1$",
+        "title": "Harness Contract Version",
+        "type": "string"
+      },
+      "task_context_id": {
+        "title": "Task Context Id",
+        "type": "string"
+      },
+      "run_id": {
+        "title": "Run Id",
+        "type": "string"
+      },
+      "tarefa_trabalho_id": {
+        "title": "Tarefa Trabalho Id",
+        "type": "string"
+      },
+      "current_order": {
+        "title": "Current Order",
+        "type": "string"
+      },
+      "task_state_ref": {
+        "title": "Task State Ref",
+        "type": "string"
+      },
+      "authority_context_ref": {
+        "title": "Authority Context Ref",
+        "type": "string"
+      },
+      "workspace_ref": {
+        "title": "Workspace Ref",
+        "type": "string"
+      },
+      "bootstrap_trace_ref": {
+        "title": "Bootstrap Trace Ref",
+        "type": "string"
+      },
+      "tactical_context_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Tactical Context Refs",
+        "type": "array"
+      },
+      "technical_context_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Technical Context Refs",
+        "type": "array"
+      },
+      "normative_context_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Normative Context Refs",
+        "type": "array"
+      },
+      "procedural_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Procedural Refs",
+        "type": "array"
+      },
+      "knowledge_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Knowledge Refs",
+        "type": "array"
+      },
+      "risk_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Risk Refs",
+        "type": "array"
+      },
+      "memory_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Memory Refs",
+        "type": "array"
+      },
+      "supporting_ref_semantics": {
+        "$ref": "#/$defs/ReferenceSemantics",
+        "default": "POINTER_ONLY"
+      },
+      "built_at": {
+        "format": "date-time",
+        "title": "Built At",
+        "type": "string"
+      }
+    },
+    "required": [
+      "task_context_id",
+      "run_id",
+      "tarefa_trabalho_id",
+      "current_order",
+      "task_state_ref",
+      "authority_context_ref",
+      "workspace_ref",
+      "bootstrap_trace_ref"
+    ],
+    "title": "TaskContext",
+    "type": "object"
+  },
+  "HarnessRun": {
+    "$defs": {
+      "RunStatus": {
+        "enum": [
+          "CREATED",
+          "READY",
+          "RUNNING",
+          "INTERRUPTED",
+          "WAITING_APPROVAL",
+          "WAITING_EXTERNAL",
+          "REWORK",
+          "FAILED",
+          "COMPLETED",
+          "CANCELLED"
+        ],
+        "title": "RunStatus",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "harness_contract_version": {
+        "default": "0.1",
+        "pattern": "^0\\.1$",
+        "title": "Harness Contract Version",
+        "type": "string"
+      },
+      "run_id": {
+        "title": "Run Id",
+        "type": "string"
+      },
+      "tarefa_trabalho_id": {
+        "title": "Tarefa Trabalho Id",
+        "type": "string"
+      },
+      "agent_id": {
+        "title": "Agent Id",
+        "type": "string"
+      },
+      "correlation_id": {
+        "title": "Correlation Id",
+        "type": "string"
+      },
+      "workspace_ref": {
+        "title": "Workspace Ref",
+        "type": "string"
+      },
+      "run_state_ref": {
+        "title": "Run State Ref",
+        "type": "string"
+      },
+      "authority_context_ref": {
+        "title": "Authority Context Ref",
+        "type": "string"
+      },
+      "status": {
+        "$ref": "#/$defs/RunStatus",
+        "default": "CREATED"
+      },
+      "task_context_ref": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Task Context Ref"
+      },
+      "parent_run_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Parent Run Id"
+      },
+      "created_at": {
+        "format": "date-time",
+        "title": "Created At",
+        "type": "string"
+      },
+      "updated_at": {
+        "format": "date-time",
+        "title": "Updated At",
+        "type": "string"
+      }
+    },
+    "required": [
+      "run_id",
+      "tarefa_trabalho_id",
+      "agent_id",
+      "correlation_id",
+      "workspace_ref",
+      "run_state_ref",
+      "authority_context_ref"
+    ],
+    "title": "HarnessRun",
+    "type": "object"
+  },
+  "RunState": {
+    "$defs": {
+      "RunStatus": {
+        "enum": [
+          "CREATED",
+          "READY",
+          "RUNNING",
+          "INTERRUPTED",
+          "WAITING_APPROVAL",
+          "WAITING_EXTERNAL",
+          "REWORK",
+          "FAILED",
+          "COMPLETED",
+          "CANCELLED"
+        ],
+        "title": "RunStatus",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "harness_contract_version": {
+        "default": "0.1",
+        "pattern": "^0\\.1$",
+        "title": "Harness Contract Version",
+        "type": "string"
+      },
+      "run_state_id": {
+        "title": "Run State Id",
+        "type": "string"
+      },
+      "run_id": {
+        "title": "Run Id",
+        "type": "string"
+      },
+      "tarefa_trabalho_id": {
+        "title": "Tarefa Trabalho Id",
+        "type": "string"
+      },
+      "status": {
+        "$ref": "#/$defs/RunStatus"
+      },
+      "current_step": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Current Step"
+      },
+      "completed_steps": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Completed Steps",
+        "type": "array"
+      },
+      "pending_steps": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Pending Steps",
+        "type": "array"
+      },
+      "artifact_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Artifact Refs",
+        "type": "array"
+      },
+      "decision_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Decision Refs",
+        "type": "array"
+      },
+      "checkpoint_ref": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Checkpoint Ref"
+      },
+      "updated_at": {
+        "format": "date-time",
+        "title": "Updated At",
+        "type": "string"
+      }
+    },
+    "required": [
+      "run_state_id",
+      "run_id",
+      "tarefa_trabalho_id",
+      "status"
+    ],
+    "title": "RunState",
+    "type": "object"
+  },
+  "Checkpoint": {
+    "additionalProperties": false,
+    "properties": {
+      "harness_contract_version": {
+        "default": "0.1",
+        "pattern": "^0\\.1$",
+        "title": "Harness Contract Version",
+        "type": "string"
+      },
+      "checkpoint_id": {
+        "title": "Checkpoint Id",
+        "type": "string"
+      },
+      "run_id": {
+        "title": "Run Id",
+        "type": "string"
+      },
+      "run_state_ref": {
+        "title": "Run State Ref",
+        "type": "string"
+      },
+      "validated_step": {
+        "title": "Validated Step",
+        "type": "string"
+      },
+      "resume_instruction": {
+        "title": "Resume Instruction",
+        "type": "string"
+      },
+      "artifact_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Artifact Refs",
+        "type": "array"
+      },
+      "evidence_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Evidence Refs",
+        "type": "array"
+      },
+      "created_at": {
+        "format": "date-time",
+        "title": "Created At",
+        "type": "string"
+      }
+    },
+    "required": [
+      "checkpoint_id",
+      "run_id",
+      "run_state_ref",
+      "validated_step",
+      "resume_instruction"
+    ],
+    "title": "Checkpoint",
+    "type": "object"
+  },
+  "Evidence": {
+    "additionalProperties": false,
+    "properties": {
+      "harness_contract_version": {
+        "default": "0.1",
+        "pattern": "^0\\.1$",
+        "title": "Harness Contract Version",
+        "type": "string"
+      },
+      "evidence_id": {
+        "title": "Evidence Id",
+        "type": "string"
+      },
+      "run_id": {
+        "title": "Run Id",
+        "type": "string"
+      },
+      "type": {
+        "title": "Type",
+        "type": "string"
+      },
+      "subject_ref": {
+        "title": "Subject Ref",
+        "type": "string"
+      },
+      "location_ref": {
+        "title": "Location Ref",
+        "type": "string"
+      },
+      "produced_by": {
+        "title": "Produced By",
+        "type": "string"
+      },
+      "criterion_ref": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Criterion Ref"
+      },
+      "hash": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Hash"
+      },
+      "observed_at": {
+        "format": "date-time",
+        "title": "Observed At",
+        "type": "string"
+      }
+    },
+    "required": [
+      "evidence_id",
+      "run_id",
+      "type",
+      "subject_ref",
+      "location_ref",
+      "produced_by"
+    ],
+    "title": "Evidence",
+    "type": "object"
+  },
+  "VerificationResult": {
+    "$defs": {
+      "VerificationStatus": {
+        "enum": [
+          "APPROVED",
+          "REJECTED",
+          "PARTIAL",
+          "NOT_RUN"
+        ],
+        "title": "VerificationStatus",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "harness_contract_version": {
+        "default": "0.1",
+        "pattern": "^0\\.1$",
+        "title": "Harness Contract Version",
+        "type": "string"
+      },
+      "verification_id": {
+        "title": "Verification Id",
+        "type": "string"
+      },
+      "run_id": {
+        "title": "Run Id",
+        "type": "string"
+      },
+      "subject_ref": {
+        "title": "Subject Ref",
+        "type": "string"
+      },
+      "status": {
+        "$ref": "#/$defs/VerificationStatus"
+      },
+      "verifier_id": {
+        "title": "Verifier Id",
+        "type": "string"
+      },
+      "criterion_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Criterion Refs",
+        "type": "array"
+      },
+      "evidence_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Evidence Refs",
+        "type": "array"
+      },
+      "findings": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Findings",
+        "type": "array"
+      },
+      "required_rework": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Required Rework",
+        "type": "array"
+      },
+      "verified_at": {
+        "format": "date-time",
+        "title": "Verified At",
+        "type": "string"
+      }
+    },
+    "required": [
+      "verification_id",
+      "run_id",
+      "subject_ref",
+      "status",
+      "verifier_id"
+    ],
+    "title": "VerificationResult",
+    "type": "object"
+  },
+  "DomainObligation": {
+    "$defs": {
+      "ObligationStatus": {
+        "enum": [
+          "PENDING",
+          "ACCEPTED",
+          "IN_PROGRESS",
+          "COMPLETED",
+          "REJECTED",
+          "FAILED"
+        ],
+        "title": "ObligationStatus",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "harness_contract_version": {
+        "default": "0.1",
+        "pattern": "^0\\.1$",
+        "title": "Harness Contract Version",
+        "type": "string"
+      },
+      "destination_domain": {
+        "title": "Destination Domain",
+        "type": "string"
+      },
+      "obligation_type": {
+        "title": "Obligation Type",
+        "type": "string"
+      },
+      "status": {
+        "$ref": "#/$defs/ObligationStatus",
+        "default": "PENDING"
+      },
+      "destination_agent_or_fraction_ref": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Destination Agent Or Fraction Ref"
+      },
+      "required_result_ref": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Required Result Ref"
+      },
+      "evidence_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Evidence Refs",
+        "type": "array"
+      }
+    },
+    "required": [
+      "destination_domain",
+      "obligation_type"
+    ],
+    "title": "DomainObligation",
+    "type": "object"
+  },
+  "CrossDomainEvent": {
+    "$defs": {
+      "DomainObligation": {
+        "additionalProperties": false,
+        "properties": {
+          "harness_contract_version": {
+            "default": "0.1",
+            "pattern": "^0\\.1$",
+            "title": "Harness Contract Version",
+            "type": "string"
+          },
+          "destination_domain": {
+            "title": "Destination Domain",
+            "type": "string"
+          },
+          "obligation_type": {
+            "title": "Obligation Type",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/$defs/ObligationStatus",
+            "default": "PENDING"
+          },
+          "destination_agent_or_fraction_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Destination Agent Or Fraction Ref"
+          },
+          "required_result_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Required Result Ref"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "destination_domain",
+          "obligation_type"
+        ],
+        "title": "DomainObligation",
+        "type": "object"
+      },
+      "ObligationStatus": {
+        "enum": [
+          "PENDING",
+          "ACCEPTED",
+          "IN_PROGRESS",
+          "COMPLETED",
+          "REJECTED",
+          "FAILED"
+        ],
+        "title": "ObligationStatus",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "harness_contract_version": {
+        "default": "0.1",
+        "pattern": "^0\\.1$",
+        "title": "Harness Contract Version",
+        "type": "string"
+      },
+      "cross_domain_event_id": {
+        "title": "Cross Domain Event Id",
+        "type": "string"
+      },
+      "correlation_id": {
+        "title": "Correlation Id",
+        "type": "string"
+      },
+      "run_id": {
+        "title": "Run Id",
+        "type": "string"
+      },
+      "tarefa_trabalho_id": {
+        "title": "Tarefa Trabalho Id",
+        "type": "string"
+      },
+      "event_type": {
+        "title": "Event Type",
+        "type": "string"
+      },
+      "origin_domain": {
+        "title": "Origin Domain",
+        "type": "string"
+      },
+      "origin_agent_id": {
+        "title": "Origin Agent Id",
+        "type": "string"
+      },
+      "business_object_ref": {
+        "title": "Business Object Ref",
+        "type": "string"
+      },
+      "facts": {
+        "additionalProperties": true,
+        "title": "Facts",
+        "type": "object"
+      },
+      "occurred_at": {
+        "format": "date-time",
+        "title": "Occurred At",
+        "type": "string"
+      },
+      "evidence_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Evidence Refs",
+        "type": "array"
+      },
+      "affected_domains": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Affected Domains",
+        "type": "array"
+      },
+      "required_obligations": {
+        "items": {
+          "$ref": "#/$defs/DomainObligation"
+        },
+        "title": "Required Obligations",
+        "type": "array"
+      }
+    },
+    "required": [
+      "cross_domain_event_id",
+      "correlation_id",
+      "run_id",
+      "tarefa_trabalho_id",
+      "event_type",
+      "origin_domain",
+      "origin_agent_id",
+      "business_object_ref",
+      "facts"
+    ],
+    "title": "CrossDomainEvent",
+    "type": "object"
+  },
+  "InstructionProfile": {
+    "additionalProperties": false,
+    "properties": {
+      "harness_contract_version": {
+        "default": "0.1",
+        "pattern": "^0\\.1$",
+        "title": "Harness Contract Version",
+        "type": "string"
+      },
+      "instruction_profile_id": {
+        "title": "Instruction Profile Id",
+        "type": "string"
+      },
+      "run_id": {
+        "title": "Run Id",
+        "type": "string"
+      },
+      "agent_id": {
+        "title": "Agent Id",
+        "type": "string"
+      },
+      "permanent_instruction_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Permanent Instruction Refs",
+        "type": "array"
+      },
+      "tactical_instruction_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Tactical Instruction Refs",
+        "type": "array"
+      },
+      "technical_instruction_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Technical Instruction Refs",
+        "type": "array"
+      },
+      "normative_instruction_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Normative Instruction Refs",
+        "type": "array"
+      },
+      "executor_native_projection_ref": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Executor Native Projection Ref"
+      }
+    },
+    "required": [
+      "instruction_profile_id",
+      "run_id",
+      "agent_id"
+    ],
+    "title": "InstructionProfile",
+    "type": "object"
+  },
+  "TelemetryEvent": {
+    "$defs": {
+      "VerificationStatus": {
+        "enum": [
+          "APPROVED",
+          "REJECTED",
+          "PARTIAL",
+          "NOT_RUN"
+        ],
+        "title": "VerificationStatus",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "harness_contract_version": {
+        "default": "0.1",
+        "pattern": "^0\\.1$",
+        "title": "Harness Contract Version",
+        "type": "string"
+      },
+      "telemetry_event_id": {
+        "title": "Telemetry Event Id",
+        "type": "string"
+      },
+      "run_id": {
+        "title": "Run Id",
+        "type": "string"
+      },
+      "correlation_id": {
+        "title": "Correlation Id",
+        "type": "string"
+      },
+      "event_type": {
+        "title": "Event Type",
+        "type": "string"
+      },
+      "agent_id": {
+        "title": "Agent Id",
+        "type": "string"
+      },
+      "tarefa_trabalho_id": {
+        "title": "Tarefa Trabalho Id",
+        "type": "string"
+      },
+      "timestamp": {
+        "format": "date-time",
+        "title": "Timestamp",
+        "type": "string"
+      },
+      "model": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Model"
+      },
+      "provider": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Provider"
+      },
+      "tool_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Tool Id"
+      },
+      "latency_ms": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Latency Ms"
+      },
+      "tokens_in": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Tokens In"
+      },
+      "tokens_out": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Tokens Out"
+      },
+      "cost": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Cost"
+      },
+      "retry_count": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Retry Count"
+      },
+      "success": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Success"
+      },
+      "verification_status": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/VerificationStatus"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "metadata": {
+        "additionalProperties": true,
+        "title": "Metadata",
+        "type": "object"
+      }
+    },
+    "required": [
+      "telemetry_event_id",
+      "run_id",
+      "correlation_id",
+      "event_type",
+      "agent_id",
+      "tarefa_trabalho_id"
+    ],
+    "title": "TelemetryEvent",
+    "type": "object"
+  },
+  "ModelRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "harness_contract_version": {
+        "default": "0.1",
+        "pattern": "^0\\.1$",
+        "title": "Harness Contract Version",
+        "type": "string"
+      },
+      "model_request_id": {
+        "title": "Model Request Id",
+        "type": "string"
+      },
+      "run_id": {
+        "title": "Run Id",
+        "type": "string"
+      },
+      "agent_id": {
+        "title": "Agent Id",
+        "type": "string"
+      },
+      "task_context_ref": {
+        "title": "Task Context Ref",
+        "type": "string"
+      },
+      "authority_context_ref": {
+        "title": "Authority Context Ref",
+        "type": "string"
+      },
+      "messages": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "title": "Messages",
+        "type": "array"
+      },
+      "model_capability": {
+        "default": "general",
+        "title": "Model Capability",
+        "type": "string"
+      },
+      "preferred_provider": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Preferred Provider"
+      },
+      "preferred_model": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Preferred Model"
+      },
+      "temperature": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Temperature"
+      },
+      "max_output_tokens": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Max Output Tokens"
+      },
+      "metadata": {
+        "additionalProperties": true,
+        "title": "Metadata",
+        "type": "object"
+      },
+      "requested_at": {
+        "format": "date-time",
+        "title": "Requested At",
+        "type": "string"
+      }
+    },
+    "required": [
+      "model_request_id",
+      "run_id",
+      "agent_id",
+      "task_context_ref",
+      "authority_context_ref",
+      "messages"
+    ],
+    "title": "ModelRequest",
+    "type": "object"
+  },
+  "ModelSelection": {
+    "additionalProperties": false,
+    "properties": {
+      "harness_contract_version": {
+        "default": "0.1",
+        "pattern": "^0\\.1$",
+        "title": "Harness Contract Version",
+        "type": "string"
+      },
+      "model_selection_id": {
+        "title": "Model Selection Id",
+        "type": "string"
+      },
+      "model_request_id": {
+        "title": "Model Request Id",
+        "type": "string"
+      },
+      "provider": {
+        "title": "Provider",
+        "type": "string"
+      },
+      "model": {
+        "title": "Model",
+        "type": "string"
+      },
+      "adapter_id": {
+        "title": "Adapter Id",
+        "type": "string"
+      },
+      "reason": {
+        "title": "Reason",
+        "type": "string"
+      },
+      "selected_at": {
+        "format": "date-time",
+        "title": "Selected At",
+        "type": "string"
+      }
+    },
+    "required": [
+      "model_selection_id",
+      "model_request_id",
+      "provider",
+      "model",
+      "adapter_id",
+      "reason"
+    ],
+    "title": "ModelSelection",
+    "type": "object"
+  },
+  "ModelResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "harness_contract_version": {
+        "default": "0.1",
+        "pattern": "^0\\.1$",
+        "title": "Harness Contract Version",
+        "type": "string"
+      },
+      "model_response_id": {
+        "title": "Model Response Id",
+        "type": "string"
+      },
+      "model_request_id": {
+        "title": "Model Request Id",
+        "type": "string"
+      },
+      "run_id": {
+        "title": "Run Id",
+        "type": "string"
+      },
+      "provider": {
+        "title": "Provider",
+        "type": "string"
+      },
+      "model": {
+        "title": "Model",
+        "type": "string"
+      },
+      "content": {
+        "title": "Content",
+        "type": "string"
+      },
+      "finish_reason": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Finish Reason"
+      },
+      "tokens_in": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Tokens In"
+      },
+      "tokens_out": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Tokens Out"
+      },
+      "raw_response_ref": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Raw Response Ref"
+      },
+      "metadata": {
+        "additionalProperties": true,
+        "title": "Metadata",
+        "type": "object"
+      },
+      "received_at": {
+        "format": "date-time",
+        "title": "Received At",
+        "type": "string"
+      }
+    },
+    "required": [
+      "model_response_id",
+      "model_request_id",
+      "run_id",
+      "provider",
+      "model",
+      "content"
+    ],
+    "title": "ModelResponse",
+    "type": "object"
+  }
+}

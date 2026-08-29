@@ -1,0 +1,106 @@
+{
+  "$defs": {
+    "RunStatus": {
+      "enum": [
+        "CREATED",
+        "READY",
+        "RUNNING",
+        "INTERRUPTED",
+        "WAITING_APPROVAL",
+        "WAITING_EXTERNAL",
+        "REWORK",
+        "FAILED",
+        "COMPLETED",
+        "CANCELLED"
+      ],
+      "title": "RunStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "harness_contract_version": {
+      "default": "0.1",
+      "pattern": "^0\\.1$",
+      "title": "Harness Contract Version",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "tarefa_trabalho_id": {
+      "title": "Tarefa Trabalho Id",
+      "type": "string"
+    },
+    "agent_id": {
+      "title": "Agent Id",
+      "type": "string"
+    },
+    "correlation_id": {
+      "title": "Correlation Id",
+      "type": "string"
+    },
+    "workspace_ref": {
+      "title": "Workspace Ref",
+      "type": "string"
+    },
+    "run_state_ref": {
+      "title": "Run State Ref",
+      "type": "string"
+    },
+    "authority_context_ref": {
+      "title": "Authority Context Ref",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/RunStatus",
+      "default": "CREATED"
+    },
+    "task_context_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Task Context Ref"
+    },
+    "parent_run_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Parent Run Id"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "tarefa_trabalho_id",
+    "agent_id",
+    "correlation_id",
+    "workspace_ref",
+    "run_state_ref",
+    "authority_context_ref"
+  ],
+  "title": "HarnessRun",
+  "type": "object"
+}

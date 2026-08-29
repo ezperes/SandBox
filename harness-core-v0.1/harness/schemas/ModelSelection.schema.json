@@ -1,0 +1,50 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "harness_contract_version": {
+      "default": "0.1",
+      "pattern": "^0\\.1$",
+      "title": "Harness Contract Version",
+      "type": "string"
+    },
+    "model_selection_id": {
+      "title": "Model Selection Id",
+      "type": "string"
+    },
+    "model_request_id": {
+      "title": "Model Request Id",
+      "type": "string"
+    },
+    "provider": {
+      "title": "Provider",
+      "type": "string"
+    },
+    "model": {
+      "title": "Model",
+      "type": "string"
+    },
+    "adapter_id": {
+      "title": "Adapter Id",
+      "type": "string"
+    },
+    "reason": {
+      "title": "Reason",
+      "type": "string"
+    },
+    "selected_at": {
+      "format": "date-time",
+      "title": "Selected At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "model_selection_id",
+    "model_request_id",
+    "provider",
+    "model",
+    "adapter_id",
+    "reason"
+  ],
+  "title": "ModelSelection",
+  "type": "object"
+}

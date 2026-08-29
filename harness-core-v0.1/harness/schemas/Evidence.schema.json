@@ -1,0 +1,74 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "harness_contract_version": {
+      "default": "0.1",
+      "pattern": "^0\\.1$",
+      "title": "Harness Contract Version",
+      "type": "string"
+    },
+    "evidence_id": {
+      "title": "Evidence Id",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "type": {
+      "title": "Type",
+      "type": "string"
+    },
+    "subject_ref": {
+      "title": "Subject Ref",
+      "type": "string"
+    },
+    "location_ref": {
+      "title": "Location Ref",
+      "type": "string"
+    },
+    "produced_by": {
+      "title": "Produced By",
+      "type": "string"
+    },
+    "criterion_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Criterion Ref"
+    },
+    "hash": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Hash"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "evidence_id",
+    "run_id",
+    "type",
+    "subject_ref",
+    "location_ref",
+    "produced_by"
+  ],
+  "title": "Evidence",
+  "type": "object"
+}
