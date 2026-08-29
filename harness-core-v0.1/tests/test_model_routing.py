@@ -29,6 +29,7 @@ def identity():
 
 def test_router_selects_highest_priority_compatible_model_without_touching_identity():
     agent_before = identity()
+    stable_before = agent_before.model_dump(exclude={"resolved_at"})
     low = FakeModelAdapter(provider="p1", model="m1")
     high = FakeModelAdapter(provider="p2", model="m2")
     router = ModelRouter()
@@ -39,7 +40,7 @@ def test_router_selects_highest_priority_compatible_model_without_touching_ident
 
     assert result.selection.provider == "p2"
     assert result.response.model == "m2"
-    assert agent_before == identity()
+    assert agent_before.model_dump(exclude={"resolved_at"}) == stable_before
     assert agent_before.agent_id == "AGT-1"
 
 
