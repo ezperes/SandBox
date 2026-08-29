@@ -54,3 +54,16 @@
 - Evidência obrigatória ausente após execução retorna `VERIFICATION_FAILED`, preservando a distinção entre resultado produzido e resultado aceitável.
 - Testes adicionados para side effect sem chave, duplicidade, proibição, competência, aprovação humana, evidência e tool ausente.
 - Decisão: `ToolDescriptor` permaneceu inicialmente como tipo interno do Core, sem entrar ainda no bundle de contratos Pydantic, para não alterar os contratos canônicos durante este incremento sem a migração/versionamento correspondente. A formalização no bundle será tratada em etapa específica de contratos.
+
+## Incremento 6
+- Objetivo: materializar `ModelPort` tipado, contratos neutros de modelo, roteamento substituível e primeiro adapter real sem acoplar o Core ao provider.
+- Criados `ModelRequest`, `ModelSelection` e `ModelResponse` como contratos Pydantic neutros a provider.
+- `ModelPort` passou de `dict → dict` para `ModelRequest → ModelResponse`.
+- Criado `ModelRouter`, que seleciona por capacidade, preferência explícita e prioridade; seleção gera `ModelSelection` auditável.
+- Criado `FakeModelAdapter` para testes e `OpenAIResponsesAdapter` como adapter real fino para Responses API, recebendo cliente injetado; o Core não importa o SDK OpenAI.
+- O adapter valida boundary por `model_request_id`, `run_id`, provider e modelo selecionados antes de aceitar o retorno.
+- Testes provam troca de provider/modelo sem alteração de `AgentIdentity` e tradução do Responses Adapter por stub de cliente.
+- Tentativa que falhou: o primeiro teste comparava duas novas instâncias de `AgentIdentity` inteiras e falhou por diferença em `resolved_at`.
+- Causa: timestamp de resolução é naturalmente distinto entre instâncias e não representa mudança de identidade institucional.
+- Solução correta: congelar os campos estáveis de `AgentIdentity` antes do roteamento e verificar que permanecem inalterados; `resolved_at` fica fora da comparação semântica.
+- Validação CI após correção: pytest, exportação de schemas e verificação de drift concluíram com sucesso.
