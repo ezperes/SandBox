@@ -6,11 +6,17 @@ Esqueleto executável do Core criado com contratos Pydantic V0.1, Ports estávei
 ## Incremento 2 — Resultado
 Implementados `IdentityResolver` e `AuthorityResolver` sem dependência de provider/runtime. A identidade nasce exclusivamente de `SourcePort`; autoridade é resolvida em até três cadeias e produz `AuthoritySnapshot` versionado.
 
+## Incremento 3 — Resultado
+Implementados `BootstrapResolver` e `ContextBuilder`. Um único Bootstrap transforma o `AuthorityContext` em até três rotas segmentadas e o ContextBuilder materializa um `TaskContext` mínimo, deduplicado e limitado por budget, preservando proveniência por cadeia. O Re-Bootstrap parcial mantém intactas as cadeias não afetadas e relê somente a cadeia alterada mais a Tarefa de Trabalho.
+
 ### Arquivos principais
 - `harness/core/identity/resolver.py`: resolução e falha fechada de identidade.
 - `harness/core/authority/resolver.py`: três cadeias, snapshot e decisão determinística.
+- `harness/core/context/bootstrap.py`: resolução das rotas tática/técnica/normativa sem carregar conteúdo.
+- `harness/core/context/builder.py`: seleção mínima, budget, deduplicação, proveniência e Re-Bootstrap parcial.
 - `harness/adapters/sources/in_memory.py`: fonte substituível de teste.
-- `tests/test_identity_authority.py`: testes de identidade, três cadeias, snapshot, competência e decisões.
+- `tests/test_identity_authority.py`: testes de identidade/autoridade.
+- `tests/test_context_bootstrap.py`: testes do Bootstrap e Context Builder.
 - `.github/workflows/harness-core-ci.yml`: CI automatizado.
 
 ### Regras comprovadas por código/teste
@@ -19,8 +25,12 @@ Implementados `IdentityResolver` e `AuthorityResolver` sem dependência de provi
 - Proibição explícita prevalece e retorna `DENY`.
 - Competência ausente retorna `ESCALATE`; autoridade não implica competência.
 - Gate humano retorna `REQUIRE_APPROVAL`.
-- Escopo não resolvido retorna `ESCALATE`, evitando autorização por ausência de dado.
 - Snapshot preserva revisões das fontes consultadas.
+- Um Bootstrap produz até três rotas independentes.
+- Contexto obrigatório tem precedência; contexto opcional é cortado pelo budget.
+- Cada referência carregada preserva a cadeia de origem.
+- Re-Bootstrap parcial não relê cadeias preservadas.
+- Contexto obrigatório que excede o budget falha fechado em vez de sofrer truncamento silencioso.
 
 ## Ambiente
 Python 3.11+; Pydantic 2.x; pytest 8.x.
@@ -30,10 +40,11 @@ Python 3.11+; Pydantic 2.x; pytest 8.x.
 
 ## Tentativa que falhou → causa → solução correta
 Incremento 1: `python scripts/export_schemas.py` → `ModuleNotFoundError: harness` → raiz ausente do `sys.path` → script passou a inserir `ROOT` antes do import.
-Incremento 2: nenhuma tentativa arquitetural descartada foi necessária; fonte física do Livro da Vida foi deliberadamente adiada para adapter próprio, evitando acoplamento do Core ao Google Drive.
+Incremento 2: fonte física do Livro da Vida foi deliberadamente adiada para adapter próprio, evitando acoplamento do Core ao Google Drive.
+Incremento 3: primeira abordagem reconstruía todo o contexto e depois restaurava cadeias não afetadas → resultado lógico correto, porém I/O desnecessário e quebra da economia de contexto → Re-Bootstrap passou a preservar refs/token usage de cadeias intactas e materializar somente `changed_chains`.
 
 ## Code map
 `docs/CODE_MAP.md`.
 
 ## Próximo incremento
-Bootstrap Resolver + Context Builder: `1 identidade → até 3 cadeias → 1 Active Context mínimo`, com proveniência por bloco e Re-Bootstrap parcial por cadeia.
+RunState + Checkpoint + persistência substituível: criar `StatePort`, implementação in-memory, criação/atualização transacional do estado, checkpoint validado e retomada sem repetir side effects já comprovados.
