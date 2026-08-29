@@ -13,6 +13,8 @@ class StubGraph:
                 "harness_status": "COMPLETED",
                 "current_step": "resumed-complete",
                 "completed_steps": ["step-1", "step-2"],
+                "decision_refs": ["RUNTIME-DECISION"],
+                "canonical_checkpoint_ref": "RUNTIME-CP",
             }
         return {
             "harness_status": "INTERRUPTED",
@@ -20,6 +22,8 @@ class StubGraph:
             "completed_steps": ["step-1"],
             "pending_steps": ["step-2"],
             "artifact_refs": ["ART-1"],
+            "decision_refs": ["RUNTIME-DECISION"],
+            "canonical_checkpoint_ref": "RUNTIME-CP",
         }
 
 
@@ -43,6 +47,8 @@ def test_execute_translates_native_state_without_owning_identity_or_authority():
     assert result.run_state_id == "RS-1"
     assert result.status == RunStatus.INTERRUPTED
     assert result.current_step == "awaiting-approval"
+    assert result.decision_refs == []
+    assert result.checkpoint_ref is None
     assert graph.calls[0][1]["configurable"]["thread_id"] == "RUN-1"
     assert "agent_id" not in graph.calls[0][0]
     assert "authority_context_ref" not in graph.calls[0][0]
@@ -58,6 +64,7 @@ def test_resume_uses_existing_langgraph_thread_and_preserves_canonical_refs():
         status=RunStatus.INTERRUPTED,
         checkpoint_ref="CP-1",
         artifact_refs=["ART-1"],
+        decision_refs=["DEC-1"],
     )
 
     resumed = adapter.resume(run(), state)
@@ -65,6 +72,7 @@ def test_resume_uses_existing_langgraph_thread_and_preserves_canonical_refs():
     assert graph.calls[0][0] is None
     assert resumed.status == RunStatus.COMPLETED
     assert resumed.checkpoint_ref == "CP-1"
+    assert resumed.decision_refs == ["DEC-1"]
     assert resumed.artifact_refs == ["ART-1"]
 
 
