@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 from harness.adapters.runtimes.fake import FakeRuntimeAdapter
 from harness.adapters.state import InMemoryStateAdapter
-from harness.contracts import HarnessErrorCode, HarnessRun, RunState, RunStatus
+from harness.contracts import AuthoritySnapshot, HarnessErrorCode, HarnessRun, RunState, RunStatus, TaskContext
 from harness.core.errors import HarnessResolutionError
 from harness.core.state import StateManager
 from harness.core.state.manager import IdempotencyStatus
@@ -19,9 +19,31 @@ def make_state() -> RunState:
 
 class PassFreshnessGate:
     def prepare(self, run):
+        task_context = TaskContext(
+            task_context_id="TC-CURRENT",
+            run_id=run.run_id,
+            tarefa_trabalho_id=run.tarefa_trabalho_id,
+            current_order="continue",
+            task_state_ref="TASK-STATE-1",
+            authority_context_ref="AC-CURRENT",
+            workspace_ref=run.workspace_ref,
+            bootstrap_trace_ref="BT-CURRENT",
+        )
+        context = SimpleNamespace(
+            task_context=task_context,
+            bootstrap=SimpleNamespace(
+                trace_id="BT-CURRENT",
+                tactical_refs=(),
+                technical_refs=(),
+                normative_refs=(),
+            ),
+        )
         return SimpleNamespace(
             authority=SimpleNamespace(authority_context_id="AC-CURRENT"),
-            context=SimpleNamespace(task_context=SimpleNamespace(task_context_id="TC-CURRENT")),
+            authority_snapshot=AuthoritySnapshot(snapshot_id="AS-CURRENT"),
+            context=context,
+            changed_chains=frozenset(),
+            identity_changed=False,
         )
 
 
@@ -37,9 +59,13 @@ def test_checkpoint_persists_and_resume_uses_canonical_state_after_freshness_gat
     run = make_run()
     resumed = manager.resume(run, FakeRuntimeAdapter(), checkpoint.checkpoint_id, freshness_gate=PassFreshnessGate())
     assert resumed.status == RunStatus.COMPLETED
-    assert port.load_run_state("RS1").status == RunStatus.COMPLETED
+    persisted = port.load_run_state("RS1")
+    assert persisted.status == RunStatus.COMPLETED
     assert run.authority_context_ref == "AC-CURRENT"
     assert run.task_context_ref == "TC-CURRENT"
+    audit_refs = [ref for ref in persisted.decision_refs if ref.startswith("RV-")]
+    assert len(audit_refs) == 1
+    assert port.load_revalidation_record(audit_refs[0])["authority_snapshot"]["snapshot_id"] == "AS-CURRENT"
 
 
 def test_resume_without_freshness_gate_fails_closed_before_runtime():
