@@ -3,11 +3,46 @@ import pytest
 from harness.adapters.sources import InMemorySourceAdapter
 from harness.adapters.state import InMemoryStateAdapter
 from harness.adapters.tools import FakeToolAdapter
-from harness.contracts import AuthorityContext, ChainType, ResolutionChain, ResolutionStatus, RiskLevel
+from harness.contracts import (
+    AgentIdentity,
+    AuthorityContext,
+    ChainType,
+    HarnessRun,
+    ResolutionChain,
+    ResolutionStatus,
+    RiskLevel,
+)
 from harness.core.errors import HarnessResolutionError
 from harness.core.freshness import AuthorityFreshnessGate
 from harness.core.state import StateManager
 from harness.core.tools import ToolDescriptor, ToolGateway, ToolRegistry
+
+
+def _identity() -> AgentIdentity:
+    return AgentIdentity(
+        agent_id="A1",
+        name="Agent One",
+        mission_ref="M1",
+        scope_ref="S1",
+        organizational_path_ref="ORG-1",
+        tactical_authority_ref="AUT-T",
+        technical_authority_ref="AUT-X",
+        normative_authority_ref="AUT-N",
+        source_ref="ID-A1",
+        source_revision_ref="ID-REV-1",
+    )
+
+
+def _run() -> HarnessRun:
+    return HarnessRun(
+        run_id="R1",
+        tarefa_trabalho_id="MT-1",
+        agent_id="A1",
+        correlation_id="C1",
+        workspace_ref="WS1",
+        run_state_ref="RS1",
+        authority_context_ref="AC-AUDIT",
+    )
 
 
 def _chain(kind: ChainType, ref: str, revision: str = "REV-1") -> ResolutionChain:
@@ -53,6 +88,7 @@ def _registry(*, side_effect: bool = True, response=None):
 
 def _source(revision: str = "REV-1") -> InMemorySourceAdapter:
     return InMemorySourceAdapter({
+        "ID-A1": {"revision_ref": "ID-REV-1", "identity": _identity().model_dump(mode="json")},
         "AUT-T": {"revision_ref": revision},
         "AUT-X": {"revision_ref": revision},
         "AUT-N": {"revision_ref": revision},
@@ -67,6 +103,7 @@ def test_side_effect_without_freshness_persists_blocked_trace_discoverable_by_ru
     with pytest.raises(HarnessResolutionError):
         gateway.execute(
             run_id="R1",
+            run=_run(),
             authority=_authority(allowed=["ops:write"]),
             tool_id="tool.audit",
             payload={},
@@ -88,13 +125,18 @@ def test_stale_side_effect_persists_expected_and_observed_revisions_before_tool_
     port = InMemoryStateAdapter()
     source = _source("REV-1")
     registry, adapter = _registry(side_effect=True)
-    gateway = ToolGateway(registry, StateManager(port), freshness_gate=AuthorityFreshnessGate(source))
+    gateway = ToolGateway(
+        registry,
+        StateManager(port),
+        freshness_gate=AuthorityFreshnessGate(source, _identity()),
+    )
     authority = _authority(allowed=["ops:write"])
     source.records["AUT-T"]["revision_ref"] = "REV-2"
 
     with pytest.raises(HarnessResolutionError):
         gateway.execute(
             run_id="R1",
+            run=_run(),
             authority=authority,
             tool_id="tool.audit",
             payload={},
@@ -117,6 +159,7 @@ def test_non_side_effect_escalation_also_persists_decision_trace():
     with pytest.raises(HarnessResolutionError):
         gateway.execute(
             run_id="R1",
+            run=_run(),
             authority=_authority(allowed=[]),
             tool_id="tool.audit",
             payload={},
@@ -135,7 +178,13 @@ def test_authorized_tool_persists_release_before_boundary_and_returns_trace_ref(
     gateway = ToolGateway(registry, StateManager(port))
     authority = _authority(allowed=["ops:read"])
 
-    result = gateway.execute(run_id="R1", authority=authority, tool_id="tool.audit", payload={"x": 1})
+    result = gateway.execute(
+        run_id="R1",
+        run=_run(),
+        authority=authority,
+        tool_id="tool.audit",
+        payload={"x": 1},
+    )
 
     assert len(adapter.calls) == 1
     assert result.decision_ref is not None

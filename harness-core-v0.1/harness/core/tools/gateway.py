@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from harness.contracts import AuthorityContext, Decision, HarnessErrorCode
+from harness.contracts import AuthorityContext, Decision, HarnessErrorCode, HarnessRun
 from harness.core.authority import AuthorityResolver
 from harness.core.errors import HarnessResolutionError
 from harness.core.freshness import AuthorityFreshnessGate
@@ -32,8 +32,28 @@ class ToolGateway:
     def _save_audit(self, record: dict[str, Any]) -> None:
         self.state.state_port.save_revalidation_record(record["revalidation_id"], record)
 
-    def execute(self, *, run_id: str, authority: AuthorityContext, tool_id: str,
-                payload: dict[str, Any], business_key: str | None = None,
+    def _block_binding(
+        self,
+        audit: dict[str, Any],
+        *,
+        outcome: str,
+        message: str,
+        source_ref: str,
+        metadata: dict[str, Any],
+    ) -> None:
+        exc = HarnessResolutionError(HarnessErrorCode.AUTHORITY_UNRESOLVED, message, source_ref)
+        self._save_audit(finalize_boundary_audit(
+            audit,
+            status="BLOCKED",
+            outcome=outcome,
+            decision=Decision.ESCALATE.value,
+            error=exc,
+            metadata=metadata,
+        ))
+        raise exc
+
+    def execute(self, *, run_id: str, run: HarnessRun | None, authority: AuthorityContext,
+                tool_id: str, payload: dict[str, Any], business_key: str | None = None,
                 approved: bool = False) -> ToolExecutionResult:
         try:
             registered = self.registry.resolve(tool_id)
@@ -51,9 +71,50 @@ class ToolGateway:
                 "action_scope": descriptor.action_scope,
                 "business_key": business_key,
                 "side_effect": descriptor.side_effect,
+                "expected_run_id": run.run_id if run else None,
+                "expected_agent_id": run.agent_id if run else None,
+                "authority_run_id": authority.run_id,
+                "authority_agent_id": authority.agent_id,
             },
         )
         self._save_audit(audit)
+
+        # Execution identity is Core-owned through HarnessRun. The ToolPort never
+        # supplies or influences these binding values. Binding failures are
+        # unresolved authority, not institutional ALLOW/DENY decisions.
+        if run is None:
+            self._block_binding(
+                audit,
+                outcome="RUN_BINDING_UNRESOLVED",
+                message="tool execution requires the Core-owned HarnessRun binding",
+                source_ref=run_id,
+                metadata={"expected_run_id": run_id},
+            )
+        if run.run_id != run_id:
+            self._block_binding(
+                audit,
+                outcome="RUN_BINDING_MISMATCH",
+                message="provided HarnessRun does not match the requested run_id",
+                source_ref=run.run_id,
+                metadata={"expected_run_id": run_id, "observed_run_id": run.run_id},
+            )
+        if authority.run_id != run_id:
+            self._block_binding(
+                audit,
+                outcome="AUTHORITY_RUN_MISMATCH",
+                message="AuthorityContext belongs to a different run",
+                source_ref=authority.authority_context_id,
+                metadata={"expected_run_id": run_id, "authority_run_id": authority.run_id},
+            )
+        if authority.agent_id != run.agent_id:
+            self._block_binding(
+                audit,
+                outcome="AUTHORITY_AGENT_MISMATCH",
+                message="AuthorityContext belongs to a different agent",
+                source_ref=authority.authority_context_id,
+                metadata={"expected_agent_id": run.agent_id, "authority_agent_id": authority.agent_id},
+            )
+
         freshness_checks: list[dict[str, Any]] = []
 
         if descriptor.side_effect:
@@ -77,14 +138,21 @@ class ToolGateway:
             except HarnessResolutionError as exc:
                 metadata: dict[str, Any] = {}
                 if exc.source_ref:
-                    for chain in (
-                        authority.tactical_chain_trace,
-                        authority.technical_chain_trace,
-                        authority.normative_chain_trace,
-                    ):
-                        if chain and chain.authority_ref == exc.source_ref:
-                            metadata["expected_revision_refs"] = list(chain.source_revision_refs)
-                            break
+                    if exc.source_ref == self.freshness_gate.identity.source_ref:
+                        metadata["freshness_subject"] = "IDENTITY"
+                        metadata["expected_revision_refs"] = [
+                            self.freshness_gate.identity.source_revision_ref
+                        ]
+                    else:
+                        for chain in (
+                            authority.tactical_chain_trace,
+                            authority.technical_chain_trace,
+                            authority.normative_chain_trace,
+                        ):
+                            if chain and chain.authority_ref == exc.source_ref:
+                                metadata["freshness_subject"] = chain.chain_type.value
+                                metadata["expected_revision_refs"] = list(chain.source_revision_refs)
+                                break
                     try:
                         current = self.freshness_gate.source.read(exc.source_ref)
                         metadata["observed_revision_ref"] = current.get("revision_ref")
