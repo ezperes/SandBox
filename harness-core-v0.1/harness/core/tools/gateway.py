@@ -6,6 +6,7 @@ from typing import Any
 from harness.contracts import AuthorityContext, Decision, HarnessErrorCode
 from harness.core.authority import AuthorityResolver
 from harness.core.errors import HarnessResolutionError
+from harness.core.freshness import AuthorityFreshnessGate
 from harness.core.state import StateManager
 from .registry import ToolRegistry
 
@@ -20,9 +21,11 @@ class ToolExecutionResult:
 
 
 class ToolGateway:
-    def __init__(self, registry: ToolRegistry, state: StateManager):
+    def __init__(self, registry: ToolRegistry, state: StateManager,
+                 freshness_gate: AuthorityFreshnessGate | None = None):
         self.registry = registry
         self.state = state
+        self.freshness_gate = freshness_gate
 
     def execute(self, *, run_id: str, authority: AuthorityContext, tool_id: str,
                 payload: dict[str, Any], business_key: str | None = None,
@@ -33,6 +36,14 @@ class ToolGateway:
             raise HarnessResolutionError(HarnessErrorCode.TOOL_UNAVAILABLE, "tool is not registered", tool_id) from exc
 
         descriptor = registered.descriptor
+
+        # T11 boundary: a new external side effect may never rely only on an
+        # authority snapshot that was valid earlier. When a Core-owned
+        # freshness gate is configured, canonical revisions are checked before
+        # authorization, idempotency reservation, or adapter invocation.
+        if descriptor.side_effect and self.freshness_gate is not None:
+            self.freshness_gate.ensure_current(authority)
+
         decision = AuthorityResolver.decide(
             authority, descriptor.action_scope,
             required_competence=descriptor.required_competence,
