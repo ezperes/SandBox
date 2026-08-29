@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from harness.contracts import Checkpoint, HarnessErrorCode, HarnessRun, RunState
 from harness.core.errors import HarnessResolutionError
+from harness.core.freshness.audit import RevalidationAuditRecord
 from harness.ports import RuntimePort, StatePort
 
 
@@ -113,11 +114,32 @@ class StateManager:
                 checkpoint_id,
             )
 
+        previous_authority_ref = run.authority_context_ref
+        previous_task_context_ref = run.task_context_ref
         preparation = freshness_gate.prepare(run)
+
+        audit = RevalidationAuditRecord.from_preparation(
+            run_id=run.run_id,
+            boundary="RuntimePort.resume",
+            previous_authority_context_ref=previous_authority_ref,
+            previous_task_context_ref=previous_task_context_ref,
+            authority_snapshot=preparation.authority_snapshot,
+            authority_context_ref=preparation.authority.authority_context_id,
+            context=preparation.context,
+            changed_chains=preparation.changed_chains,
+            identity_changed=preparation.identity_changed,
+        )
+        self.state_port.save_revalidation_record(audit.revalidation_id, audit.to_dict())
+
         run.authority_context_ref = preparation.authority.authority_context_id
         run.task_context_ref = preparation.context.task_context.task_context_id
+        if audit.revalidation_id not in state.decision_refs:
+            state.decision_refs.append(audit.revalidation_id)
+        self.state_port.save_run_state(state)
 
         resumed = runtime.resume(run, state)
+        if audit.revalidation_id not in resumed.decision_refs:
+            resumed.decision_refs.append(audit.revalidation_id)
         self.state_port.save_run_state(resumed)
         return resumed
 
