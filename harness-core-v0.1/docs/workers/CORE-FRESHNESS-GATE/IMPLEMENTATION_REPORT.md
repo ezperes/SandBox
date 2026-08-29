@@ -1,9 +1,9 @@
 # IMPLEMENTATION REPORT — CORE-FRESHNESS-GATE
 
-Status: READY_FOR_INTEGRATION — T11 scope.
+Status: READY_FOR_INTEGRATION — T11 closed at side-effect boundary; T10 security path closed, audit persistence still to be formalized.
 
 ## Objective
-Close the T11 architectural blocker at the side-effect boundary without introducing a second authority system and without implementing T10 resume semantics opportunistically.
+Create one Core-owned freshness/revalidation family reusable by sensitive boundaries, closing T11 first and then preventing resume from reaching `RuntimePort` under stale or unverifiable institutional context.
 
 ## Base / branch
 - BASE_SHA: `1a6842310b25474b15f071e074be90bcedf8920f`
@@ -11,47 +11,60 @@ Close the T11 architectural blocker at the side-effect boundary without introduc
 - Draft PR: #17
 
 ## Result
-A reusable Core-owned `AuthorityFreshnessGate` now verifies that authority revisions captured in `AuthorityContext` still match current canonical revisions read through `SourcePort`.
+### T11
+`AuthorityFreshnessGate` verifies that authority revisions captured in `AuthorityContext` still match current canonical revisions read through `SourcePort`.
 
 `ToolGateway` invokes that gate for side-effect tools before authorization, idempotency reservation, or ToolPort invocation. A stale or unverifiable authority snapshot fails closed, so the external adapter is not called under stale authority.
 
-## Files changed for the functional implementation
+### T10
+`ResumeFreshnessGate` now re-resolves `AgentIdentity` and `AuthorityContext` from canonical sources before resume, detects changed authority chains and invokes `ContextBuilder.rebuild_partial()` only for affected chains. If freshness cannot be established or a changed authority source cannot resolve, the runtime is never called.
+
+`StateManager.resume()` now requires a Core-owned freshness gate. Without one it fails closed with `AUTHORITY_UNRESOLVED`. On successful preparation it rebinds the run to fresh authority/task-context refs before calling `RuntimePort.resume()`.
+
+## Functional files
 - `harness/core/freshness/__init__.py`
 - `harness/core/freshness/gate.py`
+- `harness/core/freshness/resume.py`
 - `harness/core/tools/gateway.py`
+- `harness/core/state/manager.py`
 - `tests/test_authority_freshness_gate.py`
+- `tests/test_resume_freshness_gate.py`
+- `tests/test_state_checkpoint.py`
 
 ## Preserved architecture
 - `TÁTICA ∩ TÉCNICA ∩ NORMATIVA`
 - `CONTRATOS CANÔNICOS ← CORE ← PORTS ← ADAPTERS ← TECNOLOGIAS EXTERNAS`
 - SourcePort remains the boundary to canonical sources.
-- Tool adapters do not decide freshness or authority.
-- No canonical contract was changed merely to fit the implementation.
-- T10 resume behavior remains outside this implementation.
+- Tool/runtime adapters do not decide institutional freshness or authority.
+- No canonical contract or schema was changed merely to fit the implementation.
+- Rebuild is selective by changed authority chain.
 
-## T11 proof
-Required scenario is covered:
+## Executable proof
+T11:
+`authority rev-A → canonical source rev-B → old AuthorityContext reused → side-effect attempt → mismatch before adapter → fail-closed → ToolPort not called`
 
-`authority rev-A → canonical source changes to rev-B → old AuthorityContext reused → side-effect attempt → freshness mismatch detected before adapter → AUTHORITY_UNRESOLVED/fail-closed → ToolPort not called`
+T10:
+`interrupted run → tactical rev-1/context-1 → canonical tactical source changes to rev-2/context-2 → resume attempt → identity/authority re-resolved → tactical Active Context rebuilt while unaffected technical context is preserved → only then RuntimePort.resume()`
 
-Additional coverage proves current revisions permit the side effect and missing revision data fails closed.
+Negative T10:
+`changed authority source becomes unresolvable → freshness preparation fails → RuntimePort.resume() call count remains zero`.
 
 ## Validation
-GitHub Actions Harness Core CI run #128 succeeded on the PR merge ref:
+Final GitHub Actions Harness Core CI run #140 succeeded on the PR merge ref:
 - Python 3.11.16
-- LangGraph 1.2.11 installed
-- `53 passed in 0.74s`
+- `56 passed in 0.49s`
 - 17 schemas exported
 - schema drift clean
 
-## Error semantics
-The current V0.1 canonical enum does not expose `CONTEXT_INVALIDATED`. To avoid unauthorized contract expansion, stale freshness currently maps to `AUTHORITY_UNRESOLVED` with an explicit stale-revision message. Formalizing a dedicated invalidation error remains a future contract-version decision.
+An earlier T10 CI run failed because the test incorrectly assumed Bootstrap materialized only excerpt refs. Inspection showed the authority route ref is legitimately part of the materialized route. The test was corrected to assert the architectural invariant rather than an invalid exact list.
 
-## Residual risks / next work
-- The gate blocks stale side effects but does not yet auto-re-resolve Identity/Authority and rebuild Active Context. The safe current behavior is fail-closed and retry only after re-resolution by a future coordinator.
-- T10 remains `CONTRADICTED` until the same primitive is inserted before `RuntimePort.resume()` together with required re-resolution/rebuild semantics.
-- T07/T12 can later reuse the revision detector rather than creating another mechanism.
-- Temporary worker-only setup markers should be removed before final integration; they are not production dependencies.
+## Error semantics
+The V0.1 canonical enum still has no `CONTEXT_INVALIDATED`. To avoid unauthorized contract expansion, stale/unverifiable freshness maps to `AUTHORITY_UNRESOLVED` with explicit revision context.
+
+## Residual risk
+The runtime can no longer be reached through `StateManager.resume()` without Core-owned freshness preparation, and stale authority chains are re-resolved/rebuilt before resume. However, V0.1 does not yet provide a dedicated persistence port for the newly produced `AuthoritySnapshot`, Bootstrap trace and TaskContext as first-class historical records during resume. The preparation objects/refs exist in-process and the run is rebound, but full audit persistence must be addressed before T10 should be classified `PROVEN` rather than `PARTIAL`.
+
+T07/T12 should reuse the same revision detector/freshness family rather than introducing parallel mechanisms.
 
 ## Final worker state
 `READY_FOR_INTEGRATION`
