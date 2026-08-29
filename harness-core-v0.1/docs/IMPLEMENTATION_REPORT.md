@@ -16,23 +16,36 @@ Implementados `StatePort`, `InMemoryStateAdapter` e `StateManager`. O Core agora
 Implementados `ToolRegistry`, `ToolDescriptor` e `ToolGateway`. Nenhuma tool registrada atravessa o boundary externo antes de resolução de autoridade/escopo, competência, aprovação e idempotência quando houver side effect. Evidência obrigatória também é validada no retorno.
 
 ## Incremento 6 — Resultado
-Implementados contratos neutros `ModelRequest`, `ModelSelection` e `ModelResponse`; `ModelPort` tipado; `ModelRouter`; `FakeModelAdapter`; e `OpenAIResponsesAdapter` com cliente injetado. Provider/modelo são recursos substituíveis e não alteram `AgentIdentity`, `AuthorityContext` ou `TaskContext`.
+Implementados contratos neutros `ModelRequest`, `ModelSelection` e `ModelResponse`; `ModelPort` tipado; `ModelRouter`; `FakeModelAdapter`; e `OpenAIResponsesAdapter` com cliente injetado. Provider/modelo permanecem substituíveis e não alteram `AgentIdentity`, `AuthorityContext` ou `TaskContext`. A tradução de provider está coberta por stub; chamada live ainda não foi comprovada.
 
 ## Incremento 7 — Resultado
-Implementado `LangGraphAdapter` atrás de `RuntimePort`, sem importar LangGraph no Core e sem promover o runtime a fonte institucional. O adapter usa uma superfície mínima compatível com grafo compilado (`invoke`), projeta `run_id` para `configurable.thread_id`, traduz o estado técnico para `RunState` canônico e permite resume do thread existente com `input=None`.
+Implementado `LangGraphAdapter` atrás de `RuntimePort`, sem importar LangGraph no Core e sem promover o runtime a fonte institucional. O adapter usa uma superfície mínima compatível com grafo compilado (`invoke`), projeta `run_id` para `configurable.thread_id`, traduz o estado técnico para `RunState` e permite resume do thread existente com `input=None`. Os testes atuais usam `StubGraph`; integração contra pacote LangGraph real permanece pendente.
 
-### Arquivos principais do Incremento 7
-- `harness/adapters/runtimes/langgraph/runtime.py`: tradução LangGraph → `RunState` e resume por `thread_id`.
-- `harness/adapters/runtimes/langgraph/__init__.py`: export do adapter.
-- `tests/test_langgraph_adapter.py`: tradução, interrupt/resume, isolamento de identidade/autoridade e rejeição de estado estrangeiro.
+### Retificações pós-auditoria
+- `NAO_APLICAVEL_JUSTIFICADO` agora exige justificativa textual não vazia. A antiga justificativa genérica automática foi removida; ausência de justificativa falha fechado com `AUTHORITY_UNRESOLVED`.
+- `LangGraphAdapter` deixou de aceitar `decision_refs` e `canonical_checkpoint_ref` vindos do runtime. Referências canônicas de decisão/checkpoint só podem vir do estado canônico anterior/Core.
+- A linguagem dos Incrementos 6 e 7 foi ajustada: há adapters compatíveis e testados por stubs, mas integração live OpenAI e integração com pacote LangGraph real ainda não foram comprovadas.
 
-### Regras comprovadas
-- LangGraph não recebe prerrogativa para definir `AgentIdentity`, autoridade, política ou competência.
-- `run_id` é a chave técnica de thread; o checkpoint do runtime não substitui `Checkpoint` canônico.
-- `RunState` canônico continua sendo reconstruído pelo adapter a partir da execução técnica.
-- Resume valida o vínculo do estado com o Run antes de chamar o runtime.
-- Idempotência de side effects continua em `StatePort`/`ToolGateway`, não em LangGraph.
-- O pacote-base continua executável sem dependência obrigatória do framework LangGraph; remover o adapter não altera contratos ou Core.
+### Auditoria transversal — gates antes do primeiro E2E completo
+Documento canônico de auditoria no repositório: `docs/POST_INCREMENT_AUDIT_1_7.md`.
+
+1. **A1 — Autoridade por interseção:** a implementação atual agrega `allowed_scopes` das três cadeias por união. Isso não basta para provar a regra canônica `TÁTICA ∩ TÉCNICA ∩ NORMATIVA`. É obrigatório preservar constraints por cadeia e calcular autorização efetiva pelas cadeias aplicáveis antes do E2E.
+2. **A2 — Ledger idempotente:** o claim binário atual bloqueia repetição, mas não distingue operação pendente, completada ou resultado desconhecido. É obrigatório criar ledger com estados e estratégia de retry/reconciliação antes de side effects reais.
+3. **A5 — Semântica dos refs de tarefa:** `procedural_refs`, `knowledge_refs`, `risk_refs` e `memory_refs` precisam ser formalizados como apontadores não materializados ou entrar no pipeline de budget/proveniência.
+4. **A3 — LangGraph físico:** integração real com biblioteca/checkpointer/interrupt deve ser testada antes de declarar o runtime físico comprovado.
+5. **A4 — Provider live:** o E2E deve declarar se usa FakeModelAdapter ou realizar uma chamada live; não tratar teste por stub como integração live.
+
+### Regras comprovadas por código/teste até aqui
+- identidade vem de `SourcePort` e não do provider/runtime;
+- até três cadeias de autoridade são resolvidas e versionadas;
+- proibição explícita vence;
+- competência ausente não vira autorização implícita;
+- Bootstrap/Context Builder preservam segregação por cadeia e Re-Bootstrap parcial;
+- `RunState`/`Checkpoint` canônicos ficam fora do runtime;
+- Tool Gateway barra side effects antes do boundary quando gates falham;
+- provider/modelo não reescrevem identidade;
+- runtime não pode injetar refs canônicos de decisão/checkpoint;
+- Core continua executável com Runtime fake sem LangGraph.
 
 ## Ambiente
 Python 3.11+; Pydantic 2.x; pytest 8.x.
@@ -43,12 +56,13 @@ Python 3.11+; Pydantic 2.x; pytest 8.x.
 ## Tentativa que falhou → causa → solução correta
 Incremento 1: `python scripts/export_schemas.py` → `ModuleNotFoundError: harness` → raiz ausente do `sys.path` → script passou a inserir `ROOT` antes do import.
 Incremento 3: reconstrução total do contexto → I/O desnecessário → Re-Bootstrap materializa somente cadeias alteradas.
-Incremento 4: idempotência no Runtime poderia repetir side effect após troca/retry → claim atômico foi colocado no `StatePort`.
+Incremento 4: idempotência no Runtime poderia repetir side effect após troca/retry → claim atômico foi colocado no `StatePort`; auditoria posterior mostrou que o claim binário ainda precisa evoluir para ledger com estados antes de side effects reais.
 Incremento 6: teste comparou duas instâncias inteiras de `AgentIdentity` → `resolved_at` naturalmente diferente causou falso negativo → comparação passou a congelar apenas campos semanticamente estáveis da identidade.
-Incremento 7: foi descartada a inclusão de `langgraph` como dependência obrigatória do pacote-base → isso criaria acoplamento operacional desnecessário e enfraqueceria o critério de substituição → o adapter depende apenas de protocolo mínimo compatível; instalação real do framework pode ser um extra opcional quando a prova E2E física for montada.
+Incremento 7: dependência obrigatória de LangGraph foi evitada → adapter usa protocolo mínimo; auditoria posterior identificou que refs canônicos ainda podiam ser lidos do estado nativo → correção aplicada para ignorar `decision_refs`/`canonical_checkpoint_ref` do runtime.
+Pós-auditoria: `NAO_APLICAVEL_JUSTIFICADO` sem texto real era aceito com fallback genérico → isso criava exceção não auditável → fallback removido e justificativa passou a ser obrigatória.
 
 ## Code map
 `docs/CODE_MAP.md`.
 
-## Próximo incremento
-Primeira prova End-to-End: conectar 1 agente real, 1 Tarefa de Trabalho, identidade/autoridade, Bootstrap/Context, Model Adapter, LangGraphAdapter, Tool Gateway, RunState/Checkpoint, Evidence, VerificationResult e TelemetryEvent até encerramento rastreável.
+## Próximo passo
+**Saneamento pré-E2E**, nesta ordem: A1 (interseção real das cadeias de autoridade) → A2 (ledger de idempotência com estado) → A5 (semântica/budget/proveniência dos refs de tarefa) → A3/A4 (provas físicas de runtime/provider conforme composição escolhida). Só então executar a primeira prova End-to-End completa.
