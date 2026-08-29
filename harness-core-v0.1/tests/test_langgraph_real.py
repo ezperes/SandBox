@@ -1,6 +1,9 @@
 from importlib.metadata import version
 from pathlib import Path
 from typing import TypedDict
+import subprocess
+import sys
+import textwrap
 import tomllib
 
 from langgraph.checkpoint.memory import MemorySaver
@@ -116,3 +119,45 @@ def test_langgraph_is_explicitly_pinned_but_not_a_core_dependency():
     assert not any(dependency.startswith("langgraph") for dependency in core_dependencies)
     assert "langgraph==1.2.11" in optional["langgraph"]
     assert "langgraph==1.2.11" in optional["dev"]
+
+
+def test_core_fake_runtime_executes_when_langgraph_imports_are_blocked():
+    program = textwrap.dedent(
+        """
+        import builtins
+
+        real_import = builtins.__import__
+
+        def blocked_import(name, *args, **kwargs):
+            if name == "langgraph" or name.startswith("langgraph."):
+                raise ModuleNotFoundError("LangGraph intentionally unavailable")
+            return real_import(name, *args, **kwargs)
+
+        builtins.__import__ = blocked_import
+
+        from harness.adapters.runtimes.fake import FakeRuntimeAdapter
+        from harness.contracts import HarnessRun, RunStatus
+
+        run = HarnessRun(
+            run_id="RUN-NO-LG",
+            tarefa_trabalho_id="TT-NO-LG",
+            agent_id="AGENT-1",
+            correlation_id="CORR-1",
+            workspace_ref="WS-1",
+            run_state_ref="RS-NO-LG",
+            authority_context_ref="AUTH-1",
+        )
+        state = FakeRuntimeAdapter().execute(run, {"artifact_refs": ["ART-NO-LG"]})
+        assert state.status == RunStatus.COMPLETED
+        assert state.artifact_refs == ["ART-NO-LG"]
+        """
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", program],
+        cwd=Path.cwd(),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
