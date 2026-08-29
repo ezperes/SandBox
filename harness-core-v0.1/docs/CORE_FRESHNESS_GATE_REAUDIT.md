@@ -151,6 +151,40 @@ Não é necessário transformar `RevalidationAuditRecord` em contrato canônico 
 
 `PARTIAL`.
 
+## TRACE-01 — auditoria independente de rastreabilidade
+
+A auditoria independente TRACE-01 foi executada sobre o mesmo SHA congelado `61cd47670909469d0c684396d73b4572a1e4463a` e reforça o parecer `REWORK`.
+
+### Veredito TRACE-01
+
+- caminho de resume bem-sucedido: `PARTIAL` quanto à reconstrução histórica completa;
+- caminho fail-closed: `IMPOSSIBLE` de reconstruir apenas pelos registros persistidos;
+- ordem `persist → RuntimePort.resume()`: `PROVEN`;
+- rastreabilidade global: `TRACE_PARTIAL`;
+- parecer: `REWORK`.
+
+### Gaps adicionais confirmados
+
+1. `AuthorityContext` anterior e novo não são persistidos integralmente; permanecem apenas refs.
+2. `TaskContext` anterior não é persistido integralmente.
+3. `AuthoritySnapshot` anterior/revision refs anteriores não são preservados no RV.
+4. Bootstrap trace persistido é parcial.
+5. Não há `outcome = RELEASED | BLOCKED | FAILED` no RV.
+6. Não há `checkpoint_ref`, `attempt_no/previous_revalidation_ref`, `error_code`, `error_source_ref`, `expected_revision_refs` e `observed_revision_ref` persistidos para bloqueios.
+7. Em freshness failure, nenhum RV é gravado; o motivo existe apenas transitoriamente na exceção.
+8. O `StatePort` expõe persistência lógica, mas o único adapter atual é `InMemoryStateAdapter`; durabilidade após restart/process death ainda não está provada.
+9. O `RuntimePort.resume()` retorna `RunState` genérico e um runtime arbitrário pode introduzir `decision_refs` adicionais; `StateManager` hoje garante a presença do RV legítimo, mas não filtra refs novos injetados pelo runtime.
+10. `RV-*` é evidência técnica Core-owned inserida em `RunState.decision_refs`; isso exige semântica explícita para evitar que consumidor confunda evidência técnica de revalidação com decisão institucional autônoma.
+11. O Code Map menciona `tests/test_revalidation_audit.py`, mas esse arquivo não existe no SHA auditado; a prova equivalente está em `tests/test_resume_freshness_gate.py`.
+
+### Correção mínima TRACE-01
+
+- criar/persistir o RV antes de `freshness_gate.prepare()` como tentativa `ATTEMPTED` e finalizá-lo como `RELEASED`, `BLOCKED` ou `FAILED`;
+- no bloqueio, persistir causalidade (`error_code`, `source_ref`, revisões esperada/observada, `checkpoint_ref`);
+- preservar o “antes” com snapshot/revision refs anteriores e informação suficiente do TaskContext anterior;
+- blindar retorno do Runtime, reconstruindo `decision_refs` a partir da versão Core-owned e rejeitando/removendo refs introduzidos pelo adapter;
+- adicionar testes permanentes: `blocked freshness → RV-BLOCKED persistido → runtime_calls == 0` e `runtime malicioso injeta decision_ref → Core rejeita/remove`.
+
 ## Invariantes transversais
 
 Não foi encontrada regressão evidente nos princípios:
@@ -170,17 +204,22 @@ Motivo bloqueante: T11 continua `CONTRADICTED` devido ao freshness gate opcional
 
 T12 permanece incompleto por ausência de trilha persistida no caminho de bloqueio. T07 precisa de prova dedicada para mudança técnica e melhor tratamento histórico da identidade antes de promoção.
 
+A auditoria TRACE-01 adiciona dois bloqueios de rastreabilidade que devem entrar no mesmo ciclo de correção: persistência de tentativas bloqueadas e blindagem de `decision_refs` contra injeção pelo runtime.
+
 ## Ordem mínima de correção
 
 1. Fechar o bypass T11 tornando freshness obrigatório/fail-closed para todo side effect.
 2. Adicionar teste de regressão do gateway sem freshness.
-3. Persistir decision/revalidation trace também em falhas de freshness relevantes para T12.
-4. Adicionar teste T07 técnico-only e revisar limitação de identity revision histórica.
-5. Executar CI completa.
-6. Reauditar novamente T07/T10/T11/T12.
+3. Criar RV de tentativa antes de `prepare()` e persistir outcome/causalidade também em falhas de freshness.
+4. Preservar snapshot/revision refs anteriores e contexto anterior suficiente para reconstrução histórica.
+5. Blindar `decision_refs` retornados pelo runtime.
+6. Adicionar teste T07 técnico-only e revisar limitação de identity revision histórica.
+7. Corrigir a incongruência do Code Map sobre `tests/test_revalidation_audit.py`.
+8. Executar CI completa.
+9. Reauditar novamente T07/T10/T11/T12 + TRACE-01.
 
 ## Parecer final
 
 `REWORK`
 
-`HARNESS STATUS = ARCHITECTURAL_BLOCKER` permanece até a nova reauditoria demonstrar que T11 não possui mais caminho contraditório.
+`HARNESS STATUS = ARCHITECTURAL_BLOCKER` permanece até a nova reauditoria demonstrar que T11 não possui mais caminho contraditório e que o caminho fail-closed deixou trilha persistente suficiente para auditoria.
