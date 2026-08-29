@@ -19,3 +19,14 @@
 - Autoridade ≠ competência: competência requerida ausente nunca vira autorização implícita.
 - Criado `InMemorySourceAdapter` para testes sem acoplamento ao Google Drive/Livro da Vida físico.
 - Criado CI GitHub Actions para `pytest`, exportação de schemas e verificação de drift.
+
+## Incremento 3
+- Objetivo: implementar `BootstrapResolver` + `ContextBuilder`.
+- Bootstrap resolve uma única entrada em até três rotas segmentadas: TACTICAL, TECHNICAL e NORMATIVE; não materializa conteúdo.
+- ContextBuilder lê apenas referências candidatas, prioriza contexto obrigatório/alta prioridade, aplica orçamento de tokens e deduplica referências.
+- Cada bloco carregado preserva proveniência de cadeia em `ContextBuildResult.provenance`.
+- `TaskContext` recebe referências separadas por cadeia e `bootstrap_trace_ref` único.
+- Re-Bootstrap parcial preserva cadeias não afetadas e relê apenas a cadeia alterada mais a própria Tarefa de Trabalho.
+- Fail closed: contexto marcado `required` que não cabe no orçamento encerra com erro em vez de truncamento silencioso.
+- Testes adicionados para três rotas, contexto mínimo, proveniência, budget obrigatório e Re-Bootstrap parcial.
+- Tentativa descartada durante implementação: reconstruir o contexto inteiro e restaurar depois as cadeias não alteradas. Causa: apesar do resultado final correto, releria fontes desnecessariamente e violaria economia de tokens/I/O. Solução correta: preservar refs e token usage das cadeias intactas e materializar somente `changed_chains`.
