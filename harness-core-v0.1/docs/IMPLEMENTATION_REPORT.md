@@ -2,128 +2,121 @@
 
 ## Estado consolidado
 
-Os Incrementos 1–7 e o GT paralelo de 2026-08-29 estão consolidados em staging. Resultado técnico conjunto: **50 testes verdes**, schemas versionados e CI endurecida. O Harness, porém, **não está pronto para E2E institucional** porque T10 e T11 permanecem `CONTRADICTED`.
+Os Incrementos 1–7 e o GT paralelo estão consolidados no estado canônico anterior. O trabalho `CORE-FRESHNESS-GATE` está implementado em branch isolada e PR draft #17, ainda **não integrada** à branch canônica.
+
+Estado canônico anterior: T10/T11 `CONTRADICTED`, Harness em `ARCHITECTURAL_BLOCKER`.
+Estado candidato da PR #17: caminhos inseguros conhecidos de T10/T11 foram bloqueados por freshness/revalidation Core-owned, com persistência auditável antes do boundary de resume. A promoção da classificação depende de reauditoria e merge.
 
 ## Incrementos 1–7
 
-### Incremento 1 — contratos, ports e runtime fake
-Contratos Pydantic V0.1, Ports estáveis e `FakeRuntimeAdapter` sem framework obrigatório. JSON Schema é gerado dos contratos.
+- Incremento 1: contratos/ports/runtime fake.
+- Incremento 2: IdentityResolver + AuthorityResolver e interseção das cadeias aplicáveis.
+- Incremento 3: Bootstrap + ContextBuilder + rebuild parcial.
+- Incremento 4: RunState, Checkpoint, StatePort e ledger idempotente.
+- Incremento 5: Tool Registry/Gateway e gates antes de side effect.
+- Incremento 6: contratos/model routing/provider adapters neutros à identidade.
+- Incremento 7: LangGraphAdapter atrás de RuntimePort; A3 físico comprovado com LangGraph `1.2.11`.
 
-### Incremento 2 — identidade e autoridade
-`IdentityResolver` lê identidade exclusivamente de `SourcePort`. `AuthorityResolver` mantém cadeias tática/técnica/normativa separadas, snapshots de revisão e autorização positiva pela interseção das cadeias aplicáveis. Fail-closed em conflito/lacuna.
+## Gates já consolidados
 
-### Incremento 3 — bootstrap e contexto
-`BootstrapResolver` + `ContextBuilder` com segmentação por cadeia, budget, deduplicação, proveniência e Re-Bootstrap parcial. Supporting refs permanecem `POINTER_ONLY` na V0.1.
+- R1: N/A técnico exige justificativa real.
+- R2: runtime não injeta refs canônicos.
+- A1: autorização positiva por interseção das cadeias aplicáveis.
+- A2: ledger `PENDING|COMPLETED|FAILED|UNKNOWN`.
+- A3: LangGraph real comprovado.
+- A5: supporting refs `POINTER_ONLY`.
+- B1: `HarnessResolutionError` em `harness.core.errors` com compatibilidade legada.
+- CI-01: drift tracked/untracked/ignored detectado; baseline versionado.
 
-### Incremento 4 — estado, checkpoint e idempotência
-`StatePort`, `InMemoryStateAdapter` e `StateManager` possuem `RunState`, `Checkpoint` canônico e ledger `PENDING|COMPLETED|FAILED|UNKNOWN`. Checkpoint nativo de runtime não substitui o canônico.
+## CORE-FRESHNESS-GATE — resultado candidato
 
-### Incremento 5 — Tool Registry/Gateway
-`ToolGateway` bloqueia boundary externo antes de autoridade/escopo, competência, aprovação e idempotência. Evidência obrigatória é validada após execução. Débito P0 atual: freshness de autoridade antes de side effect (T11).
+### 1. Boundary de side effect — T11
+`AuthorityFreshnessGate` compara as revisions capturadas no `AuthorityContext` com as revisions atuais das fontes canônicas via `SourcePort`.
 
-### Incremento 6 — roteamento/model provider
-Contratos neutros `ModelRequest`, `ModelSelection`, `ModelResponse`; `ModelRouter`; Fake adapter; `OpenAIResponsesAdapter` por cliente injetado. Provider/modelo não altera identidade/autoridade. Chamada live permanece gate separado A4.
+Fluxo:
 
-### Incremento 7 — Runtime Adapter LangGraph
-`LangGraphAdapter` permanece atrás de `RuntimePort`. A3 comprovou fisicamente LangGraph `1.2.11` com `StateGraph`, `MemorySaver`, `interrupt_before`, checkpoint técnico e resume no mesmo `thread_id`. LangGraph é dependência opcional/dev, não do Core. O runtime não injeta `decision_refs`/`checkpoint_ref` canônicos. Débito P0 atual: resume institucional precisa revalidar contexto/autoridade antes do runtime (T10).
+`AuthorityContext → freshness → decisão de autoridade → idempotência → ToolPort`
 
-## Gates/retificações concluídos
+Se freshness não puder ser provado, o fluxo termina fail-closed antes do adapter. O cenário obrigatório `rev-A → rev-B/revogação → contexto rev-A reutilizado` é bloqueado antes do ToolPort.
 
-- **R1:** `NAO_APLICAVEL_JUSTIFICADO` exige justificativa real.
-- **R2:** runtime não injeta refs canônicos de decisão/checkpoint.
-- **A1:** autorização por `TÁTICA ∩ TÉCNICA ∩ NORMATIVA`/interseção de allow-lists aplicáveis.
-- **A2:** ledger idempotente com estado e reconciliação.
-- **A3:** prova física LangGraph real concluída.
-- **A5:** supporting refs explicitamente `POINTER_ONLY`.
-- **B1:** `HarnessResolutionError` movido para `harness.core.errors`, mantendo alias legado idêntico.
-- **CI-01:** schema drift detecta tracked/untracked/ignored; baseline de schemas foi versionado.
+### 2. Boundary de resume — T10
+`ResumeFreshnessGate` executa:
 
-## GT paralelo — decisões do Integrador
+`re-resolve AgentIdentity → re-resolve AuthorityContext → detectar changed_chains → rebuild parcial do Active Context → preparar snapshot/contexto atual → StateManager → RuntimePort.resume`
 
-| Worker | Resultado | Decisão |
-|---|---|---|
-| `worker/b1-core-errors` | propriedade neutra de `HarnessResolutionError`, compatibilidade preservada | `ACCEPT` |
-| `worker/a3-langgraph-real` | LangGraph real comprovado sem ganho de autoridade institucional | `ACCEPT` |
-| `worker/ci-schema-drift` | detector correto; BASE_SHA não possuía baseline rastreado | `ACCEPT_WITH_FIXES` |
-| `worker/arch-t01-t12-audit` | gap map independente, sem produção alterada | `ACCEPT` |
+`StateManager.resume()` agora exige um freshness gate Core-owned. Sem ele, não atravessa o runtime.
 
-Correção do Integrador para CI-01: materializar `harness/schemas/**` pelo próprio `scripts/export_schemas.py` em GitHub Actions/Python 3.11, sem alterar contratos. Foram versionados 17 schemas individuais + `all.schemas.json`.
+### 3. Persistência auditável
+Foi criado `RevalidationAuditRecord` com ID `RV-*`.
 
-## Ordem de integração executada em staging
+O registro preserva, antes do resume:
+- boundary sensível;
+- refs anteriores e atuais de autoridade;
+- refs anteriores e atuais de TaskContext;
+- `AuthoritySnapshot` atual;
+- Bootstrap trace;
+- cadeias alteradas;
+- flag de mudança de identidade;
+- vínculo ao run.
 
-`B1 → A3 → CI-01 → materialização de schemas → ARCH-01 → CI conjunta → auditoria final`
+O `RV-*` é persistido e referenciado por `RunState.decision_refs` **antes** da chamada externa ao runtime. Isso transforma a revalidação de um estado apenas in-process em uma evidência histórica recuperável.
 
-A branch integradora principal avançou concorrentemente com B1 durante o trabalho. O evento foi auditado: era o mesmo B1 aceito, sem divergência semântica; nenhum merge final foi feito silenciosamente sobre base desconhecida.
+## Arquitetura preservada
 
-## CI conjunta
+- `TÁTICA ∩ TÉCNICA ∩ NORMATIVA`.
+- `CONTRATOS CANÔNICOS ← CORE ← PORTS ← ADAPTERS ← TECNOLOGIAS EXTERNAS`.
+- Fonte canônica continua sendo acessada via `SourcePort`.
+- Tool/Runtime adapters não decidem autoridade/freshness institucional.
+- LangGraph continua substituível.
+- Supporting refs continuam `POINTER_ONLY`.
+- Nenhum contrato canônico/schema foi alterado apenas para acomodar a implementação.
 
-GitHub Actions `Harness Core CI` sobre o merge testado da integração:
+## Validação executável
 
-- Ubuntu 24.04;
-- CPython `3.11.16`;
-- Pydantic `2.13.5`;
-- pytest `8.4.2`;
-- LangGraph `1.2.11`;
-- `pytest`: **50 passed in 0.69s**;
-- `export_schemas.py`: **17 schemas exportados**;
-- `check_schema_drift.py`: **schema export matches the Git-tracked state**.
-
-## Auditoria T01–T12
-
-`PROVEN=0 | PARTIAL=7 | NOT_PROVEN=3 | CONTRADICTED=2`
-
-| Classe | Testes |
-|---|---|
-| `PARTIAL` | T01, T02, T04, T05, T06, T07, T12 |
-| `NOT_PROVEN` | T03, T08, T09 |
-| `CONTRADICTED` | **T10, T11** |
-
-### T10 — P0
-`StateManager.resume()` chama `RuntimePort.resume()` depois de validar checkpoint/estado, mas antes de qualquer re-resolução de identidade/autoridade/revisões ou reconstrução do Active Context. A3 prova mecânica física de resume; não prova segurança institucional desse fluxo.
-
-### T11 — P0
-`ToolGateway.execute()` decide sobre o `AuthorityContext` recebido sem freshness gate contra as revisões atuais das fontes. Uma revogação posterior pode não ser observada antes de novo side effect.
-
-Detalhes completos: `docs/POST_INCREMENT_AUDIT_1_7.md` e `docs/workers/ARCH-01-T01-T12-GAP-ANALYSIS/GAP_MAP_T01_T12.md`.
-
-## Invariantes preservados
-
-- `CONTRATOS CANÔNICOS ← CORE ← PORTS ← ADAPTERS ← TECNOLOGIAS EXTERNAS`;
-- identidade pertence ao Core/fontes canônicas;
-- autoridade pertence ao Core/fontes canônicas;
-- provider/modelo não redefine `AgentIdentity`;
-- checkpoint nativo não substitui `Checkpoint` canônico;
-- `procedural_refs`, `knowledge_refs`, `risk_refs`, `memory_refs` continuam `POINTER_ONLY`;
-- side effects passam pelo Tool Gateway e ledger;
-- conflitos/lacunas conhecidos mantêm postura fail-closed.
+Última CI funcional registrada após persistência auditável:
+- CPython 3.11;
+- LangGraph 1.2.11 instalado no ambiente de CI;
+- **57 testes passed**;
+- **17 schemas exportados**;
+- schema drift clean;
+- job SUCCESS.
 
 ## Tentativa que falhou → causa → solução correta
 
-- Exportador inicial não importava `harness` → raiz não estava em `sys.path` → script passou a inserir `ROOT`.
-- Rebuild total de contexto relia fontes desnecessárias → violava economia de tokens/I/O → Re-Bootstrap parcial.
-- Claim binário de idempotência não distinguia resultado desconhecido → risco de retry duplicado → ledger com estados + reconciliação.
-- Comparação integral de `AgentIdentity` falhou por `resolved_at` → timestamp não é mutação institucional → comparação de campos semanticamente estáveis.
-- Runtime aceitava refs canônicos do estado nativo → framework ganhava poder indevido → refs canônicos somente do Core.
-- A3 tentou validação local com clone/package → ambiente sem resolução de `github.com` → GitHub Actions executou a prova física com versão fixada.
-- CI antiga usava apenas `git diff` → arquivos novos/untracked não eram vistos → `git status --porcelain` escopado a schemas.
-- BASE_SHA não tinha schemas rastreados → hardening correto tornaria CI imediatamente vermelha → Integrador materializou o baseline com o exportador canônico no mesmo tipo de ambiente da CI.
-- Durante integração, base principal avançou → outro fluxo integrou B1 → base foi re-auditada; por ser o mesmo worker/conteúdo aceito, a integração continuou via PR recalculada, sem overwrite silencioso.
+1. Teste local via clone não executou → ambiente sem resolução DNS para GitHub → usar GitHub Actions sobre o merge ref da PR.
+2. Primeiro teste T10 exigiu lista exata de refs → Bootstrap também inclui route ref legítimo → corrigir a expectativa para a invariante arquitetural, sem mudar produção.
+3. Após introduzir persistência auditável, test double antigo não possuía snapshot/trace suficientes → o double não representava mais uma preparação válida → atualizar o double; manter a nova exigência de auditoria.
+
+## Situação T01–T12
+
+A tabela canônica do último estado integrado ainda não deve ser sobrescrita antes da reauditoria. A PR #17 fornece nova evidência para:
+- T07: detector de revision/changed_chains + rebuild seletivo + trilha de transição;
+- T10: freshness/re-resolution/rebuild/persistência antes de resume;
+- T11: freshness fail-closed antes de side effect;
+- T12: melhora de decision trace por `RV-*`, embora conflito institucional explícito ainda precise ser reavaliado.
+
+Portanto, nesta etapa:
+
+`STATUS DA PR #17 = READY_FOR_ARCHITECTURAL_REAUDIT`
+
+Não declarar ainda `PROVEN` nem liberar E2E antes do review formal.
 
 ## Riscos residuais
 
-1. **T11 — autoridade stale antes de side effect — P0.**
-2. **T10 — resume com contexto stale — P0.**
-3. T03/T06/T08/T09 — coordenação/delegação/transição organizacional ainda incompletas.
-4. T07/T12 — detector de revisions e decision trace persistido incompletos.
-5. A4 — provider live ainda não provado.
-6. Pydantic não está lockado; drift futuro será detectado pela CI, mas precisará revisão explícita.
+- Reauditoria formal T07/T10/T11/T12 ainda não executada sobre o HEAD final da PR.
+- T03/T06/T08/T09 continuam gaps independentes de coordenação/delegação/transição/instruction compatibility.
+- A4 provider-live permanece gate separado.
+- O `InMemoryStateAdapter` prova semântica de persistência, não durabilidade de produção.
+- Pydantic segue sem lockfile rígido; CI detecta drift, mas upgrade exige revisão explícita.
 
 ## Code map
 
-`docs/CODE_MAP.md`.
+`docs/CODE_MAP.md` foi atualizado para incluir `harness/core/freshness/**`, persistência `RV-*` e testes relacionados.
 
 ## Estado e próximo passo
 
-`HARNESS STATUS = ARCHITECTURAL_BLOCKER`
+A implementação do blocker comum foi materializada, porém segue isolada na PR draft #17.
 
-Próximo passo executável prioritário: **implementar um freshness/revision gate Core-owned antes de side effects no `ToolGateway` para fechar T11, falhando fechado quando o `AuthorityContext` não corresponder às revisões atuais das fontes.** O mesmo primitivo deverá ser reutilizável posteriormente no resume para fechar T10.
+Próximo passo prioritário:
+
+`reauditar T07/T10/T11/T12 → se ACCEPT, integrar PR #17 → executar CI pós-merge → atualizar auditoria canônica → decidir A4/E2E`.
