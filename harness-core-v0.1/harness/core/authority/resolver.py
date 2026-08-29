@@ -50,10 +50,17 @@ class AuthorityResolver:
             )
             x_raw = t_raw
         elif identity.technical_authority_ref.startswith("NAO_APLICAVEL_JUSTIFICADO"):
+            justification = identity.technical_authority_ref.partition(":")[2].strip()
+            if not justification:
+                raise HarnessResolutionError(
+                    HarnessErrorCode.AUTHORITY_UNRESOLVED,
+                    "technical authority marked not applicable without explicit justification",
+                    identity.technical_authority_ref,
+                )
             technical = ResolutionChain(
                 chain_type=ChainType.TECHNICAL,
                 status=ResolutionStatus.NOT_APPLICABLE_JUSTIFIED,
-                justification=identity.technical_authority_ref.partition(":")[2] or "explicitly justified",
+                justification=justification,
             )
             x_raw = {}
         else:
