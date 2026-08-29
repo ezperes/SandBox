@@ -1,0 +1,36 @@
+name: Materialize Harness Schemas
+
+on:
+  push:
+    branches: ['integration/schema-baseline']
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: harness-core-v0.1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: integration/schema-baseline
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e '.[dev]'
+      - run: python scripts/export_schemas.py
+      - name: Commit generated schema baseline
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add harness/schemas
+          if git diff --cached --quiet; then
+            echo 'No schema changes to commit'
+          else
+            git commit -m 'chore(harness): materialize schema baseline'
+            git push origin HEAD:integration/schema-baseline
+          fi
