@@ -36,6 +36,23 @@ class AuthorityResolver:
             source_revision_refs=[raw["revision_ref"]] if raw.get("revision_ref") else [],
         ), raw
 
+    @staticmethod
+    def _effective_allowed_scopes(*raws: dict) -> list[str]:
+        """Return the intersection of every chain that declares an allow-list.
+
+        A chain with no `allowed_scopes` is treated as not adding an allow-list
+        constraint (for example, a normative chain that only declares explicit
+        prohibitions). Once two or more applicable chains declare allow-lists,
+        an action must be present in all of them to remain effectively allowed.
+        """
+        declared = [set(raw.get("allowed_scopes", [])) for raw in raws if raw.get("allowed_scopes")]
+        if not declared:
+            return []
+        effective = declared[0]
+        for scopes in declared[1:]:
+            effective &= scopes
+        return sorted(effective)
+
     def resolve(self, run_id: str, identity: AgentIdentity) -> AuthorityResolution:
         tactical, t_raw = self._read_chain(ChainType.TACTICAL, identity.tactical_authority_ref)
 
@@ -85,7 +102,7 @@ class AuthorityResolver:
             technical_authority_refs=[identity.technical_authority_ref],
             normative_authority_refs=[identity.normative_authority_ref] if identity.normative_authority_ref else [],
             tactical_chain_trace=tactical, technical_chain_trace=technical, normative_chain_trace=normative,
-            allowed_scopes=sorted({v for r in raws for v in r.get("allowed_scopes", [])}),
+            allowed_scopes=self._effective_allowed_scopes(*raws),
             forbidden_scopes=sorted({v for r in raws for v in r.get("forbidden_scopes", [])}),
             competence_refs=sorted({v for r in raws for v in r.get("competence_refs", [])}),
             registration_prerogatives=sorted({v for r in raws for v in r.get("registration_prerogatives", [])}),
