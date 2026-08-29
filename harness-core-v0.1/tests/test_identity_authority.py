@@ -58,3 +58,18 @@ def test_same_tactical_chain_is_explicit_not_implicit():
     identity = IdentityResolver(s).resolve("LIVRO:A1")
     resolved = AuthorityResolver(s).resolve("RUN-2", identity)
     assert resolved.context.technical_chain_trace.status == ResolutionStatus.SAME_AS_TACTICAL
+
+
+def test_not_applicable_technical_authority_requires_real_justification():
+    s = source()
+    raw = s.records["LIVRO:A1"]["identity"]
+    raw["technical_authority_ref"] = "NAO_APLICAVEL_JUSTIFICADO"
+    identity = IdentityResolver(s).resolve("LIVRO:A1")
+    with pytest.raises(HarnessResolutionError):
+        AuthorityResolver(s).resolve("RUN-3", identity)
+
+    raw["technical_authority_ref"] = "NAO_APLICAVEL_JUSTIFICADO: tarefa puramente normativa sem método técnico aplicável"
+    identity = IdentityResolver(s).resolve("LIVRO:A1")
+    resolved = AuthorityResolver(s).resolve("RUN-4", identity)
+    assert resolved.context.technical_chain_trace.status == ResolutionStatus.NOT_APPLICABLE_JUSTIFIED
+    assert "puramente normativa" in resolved.context.technical_chain_trace.justification
