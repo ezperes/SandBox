@@ -2,17 +2,18 @@ from __future__ import annotations
 
 from copy import deepcopy
 from threading import Lock
+from typing import Any
 
 from harness.contracts import Checkpoint, RunState
 
 
 class InMemoryStateAdapter:
-    """Development StatePort implementation with atomic idempotency claims."""
+    """Development StatePort with atomic idempotency ledger records."""
 
     def __init__(self):
         self._states: dict[str, RunState] = {}
         self._checkpoints: dict[str, Checkpoint] = {}
-        self._idempotency_keys: set[str] = set()
+        self._idempotency_records: dict[str, dict[str, Any]] = {}
         self._lock = Lock()
 
     def save_run_state(self, state: RunState) -> None:
@@ -35,11 +36,23 @@ class InMemoryStateAdapter:
                 raise KeyError(checkpoint_id)
             return self._checkpoints[checkpoint_id].model_copy(deep=True)
 
-    def claim_idempotency(self, key: str) -> bool:
+    def create_idempotency_record(self, key: str, record: dict[str, Any]) -> bool:
         if not key.strip():
             raise ValueError("idempotency key must be explicit")
         with self._lock:
-            if key in self._idempotency_keys:
+            if key in self._idempotency_records:
                 return False
-            self._idempotency_keys.add(key)
+            self._idempotency_records[key] = deepcopy(record)
             return True
+
+    def load_idempotency_record(self, key: str) -> dict[str, Any]:
+        with self._lock:
+            if key not in self._idempotency_records:
+                raise KeyError(key)
+            return deepcopy(self._idempotency_records[key])
+
+    def update_idempotency_record(self, key: str, record: dict[str, Any]) -> None:
+        with self._lock:
+            if key not in self._idempotency_records:
+                raise KeyError(key)
+            self._idempotency_records[key] = deepcopy(record)
