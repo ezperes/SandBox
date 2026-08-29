@@ -27,7 +27,7 @@ V0.1 permits `RuntimePort.resume()` only from `RunStatus.INTERRUPTED`.
 `WAITING_APPROVAL` and `WAITING_EXTERNAL` are not generic resume states because the V0.1 RuntimePort.resume contract carries no approval/external-event payload. No enum was added.
 
 ### ResumeFreshnessGate provenance
-Core validates previous AuthorityContext/TaskContext run, agent and task provenance before revalidation. Current HarnessRun supplies the run_id used for rebuilt/rebound TaskContext.
+Core validates previous AuthorityContext/TaskContext run, agent and task provenance before revalidation. Current HarnessRun supplies the `run_id` used for rebuilt/rebound TaskContext.
 
 ### Runtime state ownership
 Runtime may contribute only technical progress: `status`, `current_step`, `completed_steps`, `pending_steps`, `artifact_refs`.
@@ -41,13 +41,13 @@ Checkpoint is single-use in V0.1. StatePort atomically consumes `RunState.checkp
 No canonical contract or enum changed. `StatePort` gains internal atomic `consume_checkpoint_ref`; `InMemoryStateAdapter` implements it.
 
 ## Validation
-Pending final CI:
-- pytest
-- schema export
-- schema drift
+GitHub Actions Harness Core CI on the implementation commit:
+- pytest: `91 passed`;
+- schemas exported: `17`;
+- schema drift: clean (`schema export matches the Git-tracked state`).
 
 ## Failed attempts
-None before first CI execution. Any failed validation attempt must be appended with `attempt → cause → correct solution`.
+No failed implementation or validation attempt occurred in this cycle before the documentation-only finalization commit.
 
 ## Explicit exclusions
 - no ToolGateway/side-effect change;
