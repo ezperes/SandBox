@@ -22,9 +22,9 @@ class ResumePreparation:
 class ResumeFreshnessGate:
     """Core-owned revalidation boundary required before RuntimePort.resume().
 
-    It compares the revisions captured by the prior identity/authority context with
-    current canonical sources. Any drift triggers canonical re-resolution and a
-    selective Active Context rebuild before the runtime may resume.
+    It compares the identity and authority revisions captured before interruption
+    with current canonical sources. Any relevant drift triggers canonical
+    re-resolution and selective context rebuild before the runtime may resume.
     """
 
     def __init__(
@@ -33,13 +33,21 @@ class ResumeFreshnessGate:
         source: SourcePort,
         identity_source_ref: str,
         task_source_ref: str,
+        previous_identity_revision_ref: str,
         previous_authority: AuthorityContext,
         previous_context: ContextBuildResult,
         max_context_tokens: int = 4000,
     ):
+        if not previous_identity_revision_ref.strip():
+            raise HarnessResolutionError(
+                HarnessErrorCode.IDENTITY_UNRESOLVED,
+                "resume requires the previously captured identity revision",
+                identity_source_ref,
+            )
         self.source = source
         self.identity_source_ref = identity_source_ref
         self.task_source_ref = task_source_ref
+        self.previous_identity_revision_ref = previous_identity_revision_ref
         self.previous_authority = previous_authority
         self.previous_context = previous_context
         self.max_context_tokens = max_context_tokens
@@ -96,32 +104,14 @@ class ResumeFreshnessGate:
                 "resume identity no longer matches the run agent",
                 self.identity_source_ref,
             )
-
-        previous_identity_revision = None
-        try:
-            previous_identity_raw = self.source.read(self.identity_source_ref)
-            current_identity_revision = str(previous_identity_raw.get("revision_ref") or "").strip()
-        except Exception as exc:
-            raise HarnessResolutionError(
-                HarnessErrorCode.IDENTITY_UNRESOLVED,
-                "resume identity source cannot be read for freshness",
-                self.identity_source_ref,
-            ) from exc
-
-        # The prior identity revision is carried by the authority snapshot lineage
-        # indirectly through the prior context's authority. If the current resolver
-        # cannot provide a revision, freshness is not provable.
-        if not current_identity.source_revision_ref or not current_identity_revision:
+        if not current_identity.source_revision_ref:
             raise HarnessResolutionError(
                 HarnessErrorCode.IDENTITY_UNRESOLVED,
                 "resume identity freshness cannot be proven without revision",
                 self.identity_source_ref,
             )
 
-        # There is no persisted previous AgentIdentity in V0.1. Treat any authority
-        # chain drift as requiring authority re-resolution; identity itself is always
-        # re-resolved at the boundary. Identity route changes are therefore caught by
-        # the new identity's authority refs and fail closed if they cannot resolve.
+        identity_revision_changed = current_identity.source_revision_ref != self.previous_identity_revision_ref
         changed_chains = self._changed_chains()
         resolution = AuthorityResolver(self.source).resolve(run.run_id, current_identity)
 
@@ -135,7 +125,8 @@ class ResumeFreshnessGate:
             ChainType.TECHNICAL: tuple(resolution.context.technical_authority_refs),
             ChainType.NORMATIVE: tuple(resolution.context.normative_authority_refs),
         }
-        identity_changed = any(previous_refs[k] != current_refs[k] for k in previous_refs)
+        authority_route_changed = any(previous_refs[k] != current_refs[k] for k in previous_refs)
+        identity_changed = identity_revision_changed or authority_route_changed
         if identity_changed:
             changed_chains = {ChainType.TACTICAL, ChainType.TECHNICAL, ChainType.NORMATIVE}
 
