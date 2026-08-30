@@ -29,6 +29,15 @@ class StatePort(Protocol):
     def create_idempotency_record(self, key: str, record: dict[str, Any]) -> bool: ...
     def load_idempotency_record(self, key: str) -> dict[str, Any]: ...
     def update_idempotency_record(self, key: str, record: dict[str, Any]) -> None: ...
+    # This is a mechanical atomicity capability, not policy. A distributed
+    # StatePort must implement the comparison + replacement as one linearizable
+    # store transaction/CAS; process-local read-then-write emulation is invalid.
+    def compare_and_swap_idempotency_record(
+        self,
+        key: str,
+        expected: dict[str, Any],
+        replacement: dict[str, Any],
+    ) -> bool: ...
 
 __all__ = [
     "MemoryPort",
