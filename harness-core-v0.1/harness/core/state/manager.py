@@ -12,6 +12,8 @@ from harness.core.freshness.audit import begin_boundary_audit, finalize_boundary
 from harness.core.freshness.resume import ResumeFreshnessGate
 from harness.ports import RuntimePort, StatePort
 
+from .runtime_projection import merge_runtime_result
+
 
 class IdempotencyStatus(StrEnum):
     PENDING = "PENDING"
@@ -190,11 +192,10 @@ class StateManager:
         run.task_context_ref = preparation.context.task_context.task_context_id
         self.state_port.save_run_state(state)
 
-        # decision_refs are Core-owned institutional references. The runtime may
-        # transform technical state, but it may not mint or inject decision refs.
-        canonical_decision_refs = list(state.decision_refs)
+        canonical_before_runtime = state.model_copy(deep=True)
         try:
-            resumed = runtime.resume(run, state.model_copy(deep=True))
+            runtime_result = runtime.resume(run, state.model_copy(deep=True))
+            resumed = merge_runtime_result(canonical_before_runtime, runtime_result)
         except Exception as exc:
             failed = finalize_boundary_audit(
                 released,
@@ -205,7 +206,6 @@ class StateManager:
             self.state_port.save_revalidation_record(audit["revalidation_id"], failed)
             raise
 
-        resumed.decision_refs = canonical_decision_refs
         self.state_port.save_run_state(resumed)
         return resumed
 
