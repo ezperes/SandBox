@@ -160,12 +160,13 @@ class BarrierStateAdapter(InMemoryStateAdapter):
         self.barrier = Barrier(parties)
         self.remaining = parties
         self.barrier_lock = Lock()
+        self.barrier_enabled = True
 
     def load_run_state(self, run_state_id):
         state = super().load_run_state(run_state_id)
         wait = False
         with self.barrier_lock:
-            if run_state_id == "RS1" and self.remaining > 0:
+            if self.barrier_enabled and run_state_id == "RS1" and self.remaining > 0:
                 self.remaining -= 1
                 wait = True
         if wait:
@@ -389,12 +390,15 @@ def test_failed_claim_cas_allows_at_most_one_concurrent_retry_winner():
     manager = StateManager(state_port)
     cp = checkpoint(manager)
 
-    # Materialize a proven pre-runtime FAILED claim.
+    # Materialize a proven pre-runtime FAILED claim without consuming the race barrier.
+    state_port.barrier_enabled = False
     cp_record = state_port.load_checkpoint(cp.checkpoint_id)
     state = state_port.load_run_state(cp_record.run_state_ref)
     binding = RunStateBindingGuard.ensure_bound(make_run(), state, cp_record)
     initial = manager._begin_resume_claim(binding)
     manager.fail_side_effect(initial.key, "pre-runtime failure", outcome_unknown=False)
+    state_port.remaining = 2
+    state_port.barrier_enabled = True
 
     runtime = CountingRuntime()
     errors = []
