@@ -16,7 +16,7 @@ from harness.ports.versioning import RevisionConflictError
 
 from .binding import RunStateBindingGuard
 from .resume_policy import require_resume_status_allowed
-from .runtime_projection import merge_runtime_result
+from .runtime_projection import CORE_OWNED_FIELDS, merge_runtime_result
 
 
 class IdempotencyStatus(StrEnum):
@@ -90,6 +90,28 @@ class StateManager:
         self.state_port.save_run_state(state)
         return checkpoint
 
+    @staticmethod
+    def _reject_runtime_core_owned_mutation(
+        canonical: RunState,
+        runtime_result: RunState,
+        checkpoint_id: str,
+    ) -> None:
+        """Fail closed when RuntimePort attempts to rewrite institutional RunState identity.
+
+        ``merge_runtime_result`` remains the generic projection/merge primitive and
+        preserves canonical values. The actual RuntimePort boundary is stricter:
+        an attempted write to a Core-owned field is itself invalid output and is
+        rejected before anything can be persisted.
+        """
+
+        for field_name in CORE_OWNED_FIELDS:
+            if getattr(runtime_result, field_name) != getattr(canonical, field_name):
+                raise HarnessResolutionError(
+                    HarnessErrorCode.CHECKPOINT_INVALID,
+                    f"runtime attempted to alter Core-owned RunState field: {field_name}",
+                    checkpoint_id,
+                )
+
     def resume(
         self,
         run: HarnessRun,
@@ -119,6 +141,8 @@ class StateManager:
         valid_gate = freshness_gate if type(freshness_gate) is ResumeFreshnessGate else None
         audit = begin_boundary_audit(
             run_id=run.run_id,
+            agent_id=run.agent_id,
+            tarefa_trabalho_id=run.tarefa_trabalho_id,
             correlation_id=run.correlation_id,
             boundary="RuntimePort.resume",
             checkpoint_ref=checkpoint_id,
@@ -215,16 +239,31 @@ class StateManager:
                 )
                 self.state_port.save_revalidation_record(audit["revalidation_id"], released)
 
+                # Core updates its canonical execution refs. Runtime receives a deep
+                # copy, so it has no object reference through which it can mutate
+                # HarnessRun institutional identity or bindings.
                 run.authority_context_ref = preparation.authority.authority_context_id
                 run.task_context_ref = preparation.context.task_context.task_context_id
+                runtime_run = run.model_copy(deep=True)
                 self.state_port.save_run_state(state)
 
-                # F4: runtime receives a copy and its output is merged through the
-                # explicit ownership firewall; Core-owned state cannot be minted or
-                # overwritten by the runtime.
                 canonical_before_runtime = state.model_copy(deep=True)
                 try:
-                    runtime_result = runtime.resume(run, state.model_copy(deep=True))
+                    runtime_result = runtime.resume(
+                        runtime_run,
+                        state.model_copy(deep=True),
+                    )
+                    if not isinstance(runtime_result, RunState):
+                        raise HarnessResolutionError(
+                            HarnessErrorCode.CHECKPOINT_INVALID,
+                            "RuntimePort.resume must return canonical RunState",
+                            checkpoint_id,
+                        )
+                    self._reject_runtime_core_owned_mutation(
+                        canonical_before_runtime,
+                        runtime_result,
+                        checkpoint_id,
+                    )
                     resumed = merge_runtime_result(canonical_before_runtime, runtime_result)
                 except Exception as exc:
                     runtime_error = exc
