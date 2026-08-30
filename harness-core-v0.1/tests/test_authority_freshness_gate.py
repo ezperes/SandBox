@@ -3,7 +3,15 @@ import pytest
 from harness.adapters.sources import InMemorySourceAdapter
 from harness.adapters.state import InMemoryStateAdapter
 from harness.adapters.tools import FakeToolAdapter
-from harness.contracts import AuthorityContext, ChainType, ResolutionChain, ResolutionStatus, RiskLevel
+from harness.contracts import (
+    AuthorityContext,
+    ChainType,
+    HarnessRun,
+    ResolutionChain,
+    ResolutionStatus,
+    RiskLevel,
+    TaskContext,
+)
 from harness.core.errors import HarnessResolutionError
 from harness.core.freshness import AuthorityFreshnessGate
 from harness.core.state import StateManager
@@ -34,6 +42,30 @@ def _authority(revision: str = "rev-A") -> AuthorityContext:
         allowed_scopes=["finance:pay"],
         competence_refs=["PAY"],
     )
+
+
+def _execution(authority: AuthorityContext):
+    run = HarnessRun(
+        run_id="R1",
+        tarefa_trabalho_id="TT-1",
+        agent_id="A1",
+        correlation_id="C1",
+        workspace_ref="WS1",
+        run_state_ref="RS1",
+        authority_context_ref=authority.authority_context_id,
+        task_context_ref="TC-1",
+    )
+    task = TaskContext(
+        task_context_id="TC-1",
+        run_id="R1",
+        tarefa_trabalho_id="TT-1",
+        current_order="pay",
+        task_state_ref="TS-1",
+        authority_context_ref=authority.authority_context_id,
+        workspace_ref="WS1",
+        bootstrap_trace_ref="BT-1",
+    )
+    return run, task
 
 
 def _gateway(source: InMemorySourceAdapter):
@@ -67,10 +99,14 @@ def _source(revision: str = "rev-A") -> InMemorySourceAdapter:
 def test_current_authority_revision_allows_side_effect_to_reach_adapter():
     source = _source("rev-A")
     gateway, adapter = _gateway(source)
+    authority = _authority("rev-A")
+    run, task = _execution(authority)
 
     result = gateway.execute(
         run_id="R1",
-        authority=_authority("rev-A"),
+        authority=authority,
+        run=run,
+        task_context=task,
         tool_id="finance.pay",
         payload={"amount": 10},
         business_key="PAY-1",
@@ -84,8 +120,8 @@ def test_t11_stale_authority_revision_blocks_side_effect_before_adapter():
     source = _source("rev-A")
     gateway, adapter = _gateway(source)
     authority = _authority("rev-A")
+    run, task = _execution(authority)
 
-    # Canonical authority changes after the context was resolved.
     source.records["AUT-T"]["revision_ref"] = "rev-B"
     source.records["AUT-T"]["allowed_scopes"] = []
 
@@ -93,6 +129,8 @@ def test_t11_stale_authority_revision_blocks_side_effect_before_adapter():
         gateway.execute(
             run_id="R1",
             authority=authority,
+            run=run,
+            task_context=task,
             tool_id="finance.pay",
             payload={"amount": 10},
             business_key="PAY-2",
@@ -107,11 +145,15 @@ def test_missing_revision_fails_closed_before_side_effect():
     source = _source("rev-A")
     source.records["AUT-N"].pop("revision_ref")
     gateway, adapter = _gateway(source)
+    authority = _authority("rev-A")
+    run, task = _execution(authority)
 
     with pytest.raises(HarnessResolutionError) as exc:
         gateway.execute(
             run_id="R1",
-            authority=_authority("rev-A"),
+            authority=authority,
+            run=run,
+            task_context=task,
             tool_id="finance.pay",
             payload={},
             business_key="PAY-3",
