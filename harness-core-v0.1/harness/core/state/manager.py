@@ -96,19 +96,21 @@ class StateManager:
         runtime_result: RunState,
         checkpoint_id: str,
     ) -> None:
-        """Fail closed when RuntimePort attempts to rewrite institutional RunState identity.
+        """Reject forged canonical identity while preserving F4 projection semantics.
 
-        ``merge_runtime_result`` remains the generic projection/merge primitive and
-        preserves canonical values. The actual RuntimePort boundary is stricter:
-        an attempted write to a Core-owned field is itself invalid output and is
-        rejected before anything can be persisted.
+        F4 deliberately strips conflicting Core-owned decision/checkpoint fields at
+        merge time. At the sensitive RuntimePort.resume boundary we additionally
+        reject attempts to replace canonical state/run/task identity, because such
+        a result is a foreign RunState rather than merely excess technical output.
         """
 
-        for field_name in CORE_OWNED_FIELDS:
+        identity_fields = {"run_state_id", "run_id", "tarefa_trabalho_id"}
+        assert identity_fields <= CORE_OWNED_FIELDS
+        for field_name in identity_fields:
             if getattr(runtime_result, field_name) != getattr(canonical, field_name):
                 raise HarnessResolutionError(
                     HarnessErrorCode.CHECKPOINT_INVALID,
-                    f"runtime attempted to alter Core-owned RunState field: {field_name}",
+                    f"runtime attempted to alter canonical RunState identity field: {field_name}",
                     checkpoint_id,
                 )
 
@@ -130,12 +132,7 @@ class StateManager:
                 checkpoint_id,
             ) from exc
 
-        # F1: bind the canonical execution before audit/freshness/runtime work.
         RunStateBindingGuard.ensure_bound(run, state, checkpoint)
-
-        # F2 is the specific authority for direct resume admission. Only
-        # INTERRUPTED is allowed. WAITING_APPROVAL / WAITING_EXTERNAL must first
-        # cross their Core-owned institutional gates and transition explicitly.
         require_resume_status_allowed(state.status)
 
         valid_gate = freshness_gate if type(freshness_gate) is ResumeFreshnessGate else None
@@ -161,7 +158,6 @@ class StateManager:
             state.decision_refs.append(audit["revalidation_id"])
         self.state_port.save_run_state(state)
 
-        # Only the concrete Core-owned gate may release this boundary.
         if valid_gate is None:
             exc = HarnessResolutionError(
                 HarnessErrorCode.AUTHORITY_UNRESOLVED,
@@ -215,9 +211,6 @@ class StateManager:
         resumed: RunState | None = None
 
         try:
-            # One canonical strong RevisionGuard is the linearization boundary:
-            # compare-all + hold, with the hold active for the full synchronous
-            # RuntimePort.resume call. This is intentionally not check -> resume.
             with hold_strong_revision_guard(
                 valid_gate.source,
                 preparation.versioned_read_set,
@@ -239,9 +232,6 @@ class StateManager:
                 )
                 self.state_port.save_revalidation_record(audit["revalidation_id"], released)
 
-                # Core updates its canonical execution refs. Runtime receives a deep
-                # copy, so it has no object reference through which it can mutate
-                # HarnessRun institutional identity or bindings.
                 run.authority_context_ref = preparation.authority.authority_context_id
                 run.task_context_ref = preparation.context.task_context.task_context_id
                 runtime_run = run.model_copy(deep=True)
@@ -282,7 +272,6 @@ class StateManager:
             self.state_port.save_revalidation_record(audit["revalidation_id"], blocked)
             raise
 
-        # Context manager released the strong guard here, including runtime errors.
         guard_final = guard.audit_data() if guard is not None else {}
         if runtime_error is not None:
             failed = finalize_boundary_audit(
@@ -304,7 +293,10 @@ class StateManager:
 
     @staticmethod
     def _effect_key(run_id: str, operation: str, business_key: str) -> str:
-        return f"{run_id}:{operation}:{business_key}"
+        # business_key names the real-world effect. It must survive run changes so
+        # creating a fresh HarnessRun cannot replay an already completed effect.
+        # run_id remains recorded as provenance in IdempotencyRecord, not identity.
+        return f"{operation}:{business_key}"
 
     def begin_side_effect(
         self,
