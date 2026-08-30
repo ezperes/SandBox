@@ -68,7 +68,7 @@ class VersionedReadSet:
 
 
 @dataclass(frozen=True, slots=True)
-class _GuardedRevision:
+class GuardedRevision:
     source_ref: str
     revision_ref: str | None
     version_token: str
@@ -81,7 +81,7 @@ class RevisionGuard:
     guard_id: str
     owner_ref: str
     generation: int
-    protected_versions: tuple[_GuardedRevision, ...]
+    protected_versions: tuple[GuardedRevision, ...]
     acquired_at: str = field(default_factory=_utcnow)
     released_at: str | None = None
     guard_result: str = "ACQUIRED"
