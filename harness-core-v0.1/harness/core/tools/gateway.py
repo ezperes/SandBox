@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from hashlib import sha256
+import json
 from typing import Any
 
 from harness.contracts import AuthorityContext, Decision, HarnessErrorCode, HarnessRun, TaskContext
@@ -69,6 +72,55 @@ class ToolGateway:
                 metadata["expected_revision_refs"] = list(chain.source_revision_refs)
                 break
         return metadata
+
+    @staticmethod
+    def _effect_claim_key(tool_id: str, business_key: str, payload: dict[str, Any]) -> str:
+        """Stable identity for the same real-world side effect across HarnessRuns.
+
+        The run-scoped ledger remains the execution history. This orthogonal claim
+        prevents changing only ``run_id`` from replaying an identical operation,
+        business key and canonical payload, while allowing a genuinely different
+        payload under the same business key to remain a distinct effect.
+        """
+
+        canonical_payload = json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            default=str,
+        )
+        material = f"{tool_id}\0{business_key}\0{canonical_payload}".encode("utf-8")
+        return f"EFFECT:{sha256(material).hexdigest()}"
+
+    @staticmethod
+    def _effect_claim_record(
+        claim_key: str,
+        *,
+        run_id: str,
+        tool_id: str,
+        business_key: str,
+        status: str = "PENDING",
+        result: dict[str, Any] | None = None,
+        evidence_refs: list[str] | None = None,
+        error: str | None = None,
+        reconciliation_required: bool = False,
+    ) -> dict[str, Any]:
+        now = datetime.now(timezone.utc).isoformat()
+        return {
+            "key": claim_key,
+            "run_id": run_id,
+            "operation": tool_id,
+            "business_key": business_key,
+            "status": status,
+            "attempt": 1,
+            "result": result,
+            "evidence_refs": list(evidence_refs or []),
+            "error": error,
+            "reconciliation_required": reconciliation_required,
+            "created_at": now,
+            "updated_at": now,
+        }
 
     def execute(
         self,
@@ -321,6 +373,7 @@ class ToolGateway:
             raise exc
 
         idempotency_key: str | None = None
+        effect_claim_key = self._effect_claim_key(tool_id, business_key, payload)
         output: dict[str, Any] | None = None
         guard = None
         guarded_audit = None
@@ -330,6 +383,37 @@ class ToolGateway:
                 read_set,
                 owner_ref=f"TOOL:{run_id}:{tool_id}:{business_key}",
             ) as guard:
+                # Approval/competence and initial freshness are already valid. The
+                # claim and run ledger are reserved only after the strong guard is
+                # active, preventing stale attempts from creating misleading ledger
+                # history while keeping the guard out of human/external wait time.
+                claim = self._effect_claim_record(
+                    effect_claim_key,
+                    run_id=run_id,
+                    tool_id=tool_id,
+                    business_key=business_key,
+                )
+                if not self.state.state_port.create_idempotency_record(effect_claim_key, claim):
+                    exc = HarnessResolutionError(
+                        HarnessErrorCode.RETRY_BLOCKED,
+                        "identical real-world side effect already has a cross-run claim",
+                        effect_claim_key,
+                    )
+                    self._save_audit(finalize_boundary_audit(
+                        audit,
+                        status="BLOCKED",
+                        outcome="EFFECT_CLAIM_BLOCKED",
+                        decision=decision.value,
+                        error=exc,
+                        freshness_checks=freshness_checks,
+                        metadata={
+                            "effect_claim_key": effect_claim_key,
+                            "versioned_read_set": read_set.audit_data(),
+                            "revision_guard": guard.audit_data(),
+                        },
+                    ))
+                    raise exc
+
                 try:
                     record = self.state.begin_side_effect(run_id, tool_id, business_key)
                     idempotency_key = record.key
@@ -342,6 +426,7 @@ class ToolGateway:
                         error=exc,
                         freshness_checks=freshness_checks,
                         metadata={
+                            "effect_claim_key": effect_claim_key,
                             "versioned_read_set": read_set.audit_data(),
                             "revision_guard": guard.audit_data(),
                         },
@@ -357,6 +442,7 @@ class ToolGateway:
                         error=wrapped,
                         freshness_checks=freshness_checks,
                         metadata={
+                            "effect_claim_key": effect_claim_key,
                             "versioned_read_set": read_set.audit_data(),
                             "revision_guard": guard.audit_data(),
                         },
@@ -372,6 +458,7 @@ class ToolGateway:
                     authority_context_ref=authority.authority_context_id,
                     metadata={
                         "idempotency_key": idempotency_key,
+                        "effect_claim_key": effect_claim_key,
                         "versioned_read_set": read_set.audit_data(),
                         "revision_guard": guard.audit_data(),
                     },
@@ -383,6 +470,16 @@ class ToolGateway:
                 except Exception as exc:
                     if idempotency_key:
                         self.state.fail_side_effect(idempotency_key, str(exc), outcome_unknown=True)
+                    failed_claim = self._effect_claim_record(
+                        effect_claim_key,
+                        run_id=run_id,
+                        tool_id=tool_id,
+                        business_key=business_key,
+                        status="UNKNOWN",
+                        error=str(exc),
+                        reconciliation_required=True,
+                    )
+                    self.state.state_port.update_idempotency_record(effect_claim_key, failed_claim)
                     self._save_audit(finalize_boundary_audit(
                         guarded_audit,
                         status="FAILED",
@@ -430,6 +527,16 @@ class ToolGateway:
             result=output,
             evidence_refs=list(evidence_refs),
         )
+        completed_claim = self._effect_claim_record(
+            effect_claim_key,
+            run_id=run_id,
+            tool_id=tool_id,
+            business_key=business_key,
+            status="COMPLETED",
+            result=output,
+            evidence_refs=list(evidence_refs),
+        )
+        self.state.state_port.update_idempotency_record(effect_claim_key, completed_claim)
 
         if descriptor.evidence_required and not evidence_refs:
             exc = HarnessResolutionError(
@@ -446,6 +553,7 @@ class ToolGateway:
                 freshness_checks=freshness_checks,
                 metadata={
                     "idempotency_key": idempotency_key,
+                    "effect_claim_key": effect_claim_key,
                     "revision_guard_final": guard_final,
                 },
             ))
@@ -459,6 +567,7 @@ class ToolGateway:
             freshness_checks=freshness_checks,
             metadata={
                 "idempotency_key": idempotency_key,
+                "effect_claim_key": effect_claim_key,
                 "evidence_refs": list(evidence_refs),
                 "revision_guard_final": guard_final,
             },
