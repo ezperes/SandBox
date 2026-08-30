@@ -4,15 +4,14 @@ from pathlib import Path
 HARNESS_ROOT = Path(__file__).resolve().parents[1] / "harness"
 
 
-def test_red_team_no_parallel_revision_lease_or_runtime_fence_family():
-    """Known REWORK pattern: do not create a second revision-proof subsystem.
-
-    This is a structural tripwire only. Passing it is necessary, not sufficient:
-    the active TOCTOU probes must still prove that Tool and Runtime boundaries
-    are protected through the canonical VersionedReadSet + strong Revision Guard
-    infrastructure on the future frozen integration SHA.
-    """
-    forbidden_symbols = ("RevisionLeasePort", "RuntimeResumeFence")
+def test_red_team_no_parallel_revision_protection_family():
+    """RT-12 structural tripwire: exactly one revision-proof family may remain."""
+    forbidden_symbols = (
+        "RevisionLeasePort",
+        "RuntimeResumeFence",
+        "ToolBoundaryFence",
+        "RevisionFenceSource",
+    )
     hits: list[str] = []
 
     for path in HARNESS_ROOT.rglob("*.py"):
@@ -23,6 +22,6 @@ def test_red_team_no_parallel_revision_lease_or_runtime_fence_family():
 
     assert not hits, (
         "parallel revision/fence family detected; converge on the existing "
-        "VersionedReadSet + strong Revision Guard infrastructure instead: "
+        "VersionedReadSet + RevisionGuard infrastructure instead: "
         + ", ".join(sorted(hits))
     )
