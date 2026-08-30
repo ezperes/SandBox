@@ -1,0 +1,23 @@
+name: P0-2 Runtime Terminal Trace
+
+on:
+  push:
+    branches:
+      - worker/p0-2-runtime-terminal-trace
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: harness-core-v0.1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e '.[dev]'
+      - run: pytest -q tests/test_runtime_terminal_trace.py tests/test_revalidation_audit.py
+      - run: pytest -q
+      - run: python scripts/export_schemas.py
+      - run: python scripts/check_schema_drift.py
