@@ -140,6 +140,7 @@ class ContextBuilder:
         task_source_ref: str,
         changed_chains: set[ChainType],
         *,
+        run_id: str | None = None,
         max_context_tokens: int = 4000,
     ) -> ContextBuildResult:
         if not changed_chains:
@@ -180,7 +181,7 @@ class ContextBuilder:
             chain_refs.setdefault(chain_type, [])
 
         context = self._task_context(
-            run_id=previous.task_context.run_id,
+            run_id=run_id if run_id is not None else previous.task_context.run_id,
             authority=authority,
             task=task,
             bootstrap=bootstrap,

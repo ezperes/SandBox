@@ -6,7 +6,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import uuid4
 
-from harness.contracts import Checkpoint, HarnessErrorCode, HarnessRun, RunState
+from harness.contracts import Checkpoint, HarnessErrorCode, HarnessRun, RunState, RunStatus
 from harness.core.errors import HarnessResolutionError
 from harness.core.freshness.audit import begin_boundary_audit, finalize_boundary_audit
 from harness.core.freshness.resume import ResumeFreshnessGate
@@ -54,6 +54,8 @@ class IdempotencyRecord:
 class StateManager:
     """Own canonical RunState/Checkpoint persistence and side-effect ledger semantics."""
 
+    RESUMABLE_STATUSES = frozenset({RunStatus.INTERRUPTED})
+
     def __init__(self, state_port: StatePort):
         self.state_port = state_port
 
@@ -84,6 +86,64 @@ class StateManager:
         self.state_port.save_run_state(state)
         return checkpoint
 
+    @staticmethod
+    def _checkpoint_invalid(message: str, checkpoint_id: str) -> HarnessResolutionError:
+        return HarnessResolutionError(HarnessErrorCode.CHECKPOINT_INVALID, message, checkpoint_id)
+
+    def _validate_resume_binding(
+        self,
+        run: HarnessRun,
+        checkpoint: Checkpoint,
+        state: RunState,
+        checkpoint_id: str,
+    ) -> None:
+        if checkpoint.run_id != run.run_id:
+            raise self._checkpoint_invalid("checkpoint does not belong to run", checkpoint_id)
+        if checkpoint.run_state_ref != state.run_state_id:
+            raise self._checkpoint_invalid(
+                "checkpoint run_state_ref does not match loaded RunState",
+                checkpoint_id,
+            )
+        if state.run_state_id != run.run_state_ref:
+            raise self._checkpoint_invalid(
+                "RunState does not match HarnessRun.run_state_ref",
+                checkpoint_id,
+            )
+        if state.run_id != run.run_id:
+            raise self._checkpoint_invalid("RunState does not belong to run", checkpoint_id)
+        if state.tarefa_trabalho_id != run.tarefa_trabalho_id:
+            raise self._checkpoint_invalid(
+                "RunState task does not match HarnessRun task",
+                checkpoint_id,
+            )
+        if state.checkpoint_ref != checkpoint_id:
+            raise self._checkpoint_invalid(
+                "RunState does not point to requested checkpoint",
+                checkpoint_id,
+            )
+        if state.status not in self.RESUMABLE_STATUSES:
+            raise self._checkpoint_invalid(
+                f"RunState status {state.status.value} is not resumable in Harness V0.1",
+                checkpoint_id,
+            )
+
+    @staticmethod
+    def _merge_runtime_state(canonical: RunState, runtime_state: RunState) -> RunState:
+        if not isinstance(runtime_state, RunState):
+            raise TypeError("RuntimePort.resume must return RunState")
+        return RunState(
+            run_state_id=canonical.run_state_id,
+            run_id=canonical.run_id,
+            tarefa_trabalho_id=canonical.tarefa_trabalho_id,
+            status=runtime_state.status,
+            current_step=runtime_state.current_step,
+            completed_steps=list(runtime_state.completed_steps),
+            pending_steps=list(runtime_state.pending_steps),
+            artifact_refs=list(runtime_state.artifact_refs),
+            decision_refs=list(canonical.decision_refs),
+            checkpoint_ref=canonical.checkpoint_ref,
+        )
+
     def resume(
         self,
         run: HarnessRun,
@@ -96,24 +156,12 @@ class StateManager:
             checkpoint = self.state_port.load_checkpoint(checkpoint_id)
             state = self.state_port.load_run_state(checkpoint.run_state_ref)
         except KeyError as exc:
-            raise HarnessResolutionError(
-                HarnessErrorCode.CHECKPOINT_INVALID,
+            raise self._checkpoint_invalid(
                 f"checkpoint or run state not found: {exc}",
                 checkpoint_id,
             ) from exc
 
-        if checkpoint.run_id != run.run_id or state.run_id != run.run_id:
-            raise HarnessResolutionError(
-                HarnessErrorCode.CHECKPOINT_INVALID,
-                "checkpoint/run mismatch",
-                checkpoint_id,
-            )
-        if state.checkpoint_ref != checkpoint_id:
-            raise HarnessResolutionError(
-                HarnessErrorCode.CHECKPOINT_INVALID,
-                "run state does not point to requested checkpoint",
-                checkpoint_id,
-            )
+        self._validate_resume_binding(run, checkpoint, state, checkpoint_id)
 
         valid_gate = freshness_gate if type(freshness_gate) is ResumeFreshnessGate else None
         audit = begin_boundary_audit(
@@ -154,6 +202,7 @@ class StateManager:
             raise exc
 
         try:
+            valid_gate.validate_provenance(run)
             preparation = valid_gate.prepare(run)
         except HarnessResolutionError as exc:
             blocked = finalize_boundary_audit(
@@ -174,6 +223,18 @@ class StateManager:
             self.state_port.save_revalidation_record(audit["revalidation_id"], failed)
             raise
 
+        if not self.state_port.consume_checkpoint_ref(state.run_state_id, checkpoint_id):
+            exc = self._checkpoint_invalid("checkpoint was already consumed", checkpoint_id)
+            blocked = finalize_boundary_audit(
+                audit,
+                status="BLOCKED",
+                outcome="CHECKPOINT_ALREADY_CONSUMED",
+                error=exc,
+            )
+            self.state_port.save_revalidation_record(audit["revalidation_id"], blocked)
+            raise exc
+        state.checkpoint_ref = None
+
         released = finalize_boundary_audit(
             audit,
             status="RELEASED",
@@ -183,18 +244,17 @@ class StateManager:
             context=preparation.context,
             changed_chains=preparation.changed_chains,
             identity_changed=preparation.identity_changed,
+            metadata={"checkpoint_consumed": True},
         )
         self.state_port.save_revalidation_record(audit["revalidation_id"], released)
 
         run.authority_context_ref = preparation.authority.authority_context_id
         run.task_context_ref = preparation.context.task_context.task_context_id
-        self.state_port.save_run_state(state)
 
-        # decision_refs are Core-owned institutional references. The runtime may
-        # transform technical state, but it may not mint or inject decision refs.
-        canonical_decision_refs = list(state.decision_refs)
+        canonical_state = state.model_copy(deep=True)
         try:
-            resumed = runtime.resume(run, state.model_copy(deep=True))
+            runtime_state = runtime.resume(run, canonical_state.model_copy(deep=True))
+            resumed = self._merge_runtime_state(canonical_state, runtime_state)
         except Exception as exc:
             failed = finalize_boundary_audit(
                 released,
@@ -205,7 +265,6 @@ class StateManager:
             self.state_port.save_revalidation_record(audit["revalidation_id"], failed)
             raise
 
-        resumed.decision_refs = canonical_decision_refs
         self.state_port.save_run_state(resumed)
         return resumed
 

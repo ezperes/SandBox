@@ -52,6 +52,39 @@ class ResumeFreshnessGate:
         self.previous_context = previous_context
         self.max_context_tokens = max_context_tokens
 
+    def validate_provenance(self, run: HarnessRun) -> None:
+        previous_task = self.previous_context.task_context
+        if self.previous_authority.run_id != run.run_id:
+            raise HarnessResolutionError(
+                HarnessErrorCode.CHECKPOINT_INVALID,
+                "resume previous AuthorityContext belongs to another run",
+                self.previous_authority.authority_context_id,
+            )
+        if self.previous_authority.agent_id != run.agent_id:
+            raise HarnessResolutionError(
+                HarnessErrorCode.CHECKPOINT_INVALID,
+                "resume previous AuthorityContext belongs to another agent",
+                self.previous_authority.authority_context_id,
+            )
+        if previous_task.run_id != run.run_id:
+            raise HarnessResolutionError(
+                HarnessErrorCode.CHECKPOINT_INVALID,
+                "resume previous TaskContext belongs to another run",
+                previous_task.task_context_id,
+            )
+        if previous_task.tarefa_trabalho_id != run.tarefa_trabalho_id:
+            raise HarnessResolutionError(
+                HarnessErrorCode.CHECKPOINT_INVALID,
+                "resume previous TaskContext belongs to another work task",
+                previous_task.task_context_id,
+            )
+        if previous_task.authority_context_ref != self.previous_authority.authority_context_id:
+            raise HarnessResolutionError(
+                HarnessErrorCode.CHECKPOINT_INVALID,
+                "resume previous TaskContext is not bound to previous AuthorityContext",
+                previous_task.task_context_id,
+            )
+
     @staticmethod
     def _chain_current_revision(source: SourcePort, authority_ref: str) -> str:
         try:
@@ -97,6 +130,15 @@ class ResumeFreshnessGate:
         return changed
 
     def prepare(self, run: HarnessRun) -> ResumePreparation:
+        self.validate_provenance(run)
+        current_task = self.source.read(self.task_source_ref)
+        if str(current_task.get("tarefa_trabalho_id") or "") != run.tarefa_trabalho_id:
+            raise HarnessResolutionError(
+                HarnessErrorCode.CHECKPOINT_INVALID,
+                "resume task source no longer matches HarnessRun task",
+                self.task_source_ref,
+            )
+
         current_identity = IdentityResolver(self.source).resolve(self.identity_source_ref)
         if current_identity.agent_id != run.agent_id:
             raise HarnessResolutionError(
@@ -137,15 +179,16 @@ class ResumeFreshnessGate:
                 resolution.context,
                 self.task_source_ref,
                 changed_chains,
+                run_id=run.run_id,
                 max_context_tokens=self.max_context_tokens,
             )
         else:
             # Rebind to the freshly resolved authority even when materialized chain
             # content is unchanged, so the resumed run points at a current snapshot.
             context = builder._task_context(
-                run_id=self.previous_context.task_context.run_id,
+                run_id=run.run_id,
                 authority=resolution.context,
-                task=self.source.read(self.task_source_ref),
+                task=current_task,
                 bootstrap=self.previous_context.bootstrap,
                 chain_refs={
                     ChainType.TACTICAL: list(self.previous_context.task_context.tactical_context_refs),
