@@ -9,6 +9,8 @@ from harness.core.errors import HarnessResolutionError
 from harness.core.identity import IdentityResolver
 from harness.ports import SourcePort
 
+from .isolation import validate_prepared_resume_binding, validate_previous_resume_binding
+
 
 @dataclass(frozen=True, slots=True)
 class ResumePreparation:
@@ -25,6 +27,10 @@ class ResumeFreshnessGate:
     It compares the identity and authority revisions captured before interruption
     with current canonical sources. Any relevant drift triggers canonical
     re-resolution and selective context rebuild before the runtime may resume.
+
+    Reusable identity/authority/task context is additionally isolated to the
+    current run, agent, task and workspace before any preparation may release
+    the runtime boundary.
     """
 
     def __init__(
@@ -97,6 +103,16 @@ class ResumeFreshnessGate:
         return changed
 
     def prepare(self, run: HarnessRun) -> ResumePreparation:
+        validate_previous_resume_binding(
+            run=run,
+            previous_authority=self.previous_authority,
+            previous_context=self.previous_context,
+            source=self.source,
+            identity_source_ref=self.identity_source_ref,
+            previous_identity_revision_ref=self.previous_identity_revision_ref,
+            task_source_ref=self.task_source_ref,
+        )
+
         current_identity = IdentityResolver(self.source).resolve(self.identity_source_ref)
         if current_identity.agent_id != run.agent_id:
             raise HarnessResolutionError(
@@ -160,6 +176,12 @@ class ResumeFreshnessGate:
                 token_usage=dict(self.previous_context.token_usage),
                 estimated_tokens=self.previous_context.estimated_tokens,
             )
+
+        validate_prepared_resume_binding(
+            run=run,
+            authority=resolution.context,
+            context=context,
+        )
 
         return ResumePreparation(
             authority=resolution.context,
