@@ -1,15 +1,37 @@
 import pytest
 
+from harness.adapters.sources import InMemorySourceAdapter
 from harness.adapters.state import InMemoryStateAdapter
 from harness.adapters.tools import FakeToolAdapter
-from harness.contracts import AuthorityContext, ChainType, ResolutionChain, ResolutionStatus, RiskLevel
+from harness.contracts import (
+    AuthorityContext,
+    ChainType,
+    HarnessRun,
+    ResolutionChain,
+    ResolutionStatus,
+    RiskLevel,
+    TaskContext,
+)
 from harness.core.errors import HarnessResolutionError
+from harness.core.freshness import AuthorityFreshnessGate
 from harness.core.state import StateManager
+from harness.core.state.manager import IdempotencyStatus
 from harness.core.tools import ToolDescriptor, ToolGateway, ToolRegistry
 
 
 def chain(kind):
-    return ResolutionChain(chain_type=kind, status=ResolutionStatus.RESOLVED, authority_ref=f"AUT-{kind}", route_refs=[f"SRC-{kind}"])
+    ref = {
+        ChainType.TACTICAL: "AUT-T",
+        ChainType.TECHNICAL: "AUT-X",
+        ChainType.NORMATIVE: "AUT-N",
+    }[kind]
+    return ResolutionChain(
+        chain_type=kind,
+        status=ResolutionStatus.RESOLVED,
+        authority_ref=ref,
+        route_refs=[ref],
+        source_revision_refs=["REV-1"],
+    )
 
 
 def authority(*, allowed=None, forbidden=None, competences=None):
@@ -21,11 +43,88 @@ def authority(*, allowed=None, forbidden=None, competences=None):
     )
 
 
+def execution(auth: AuthorityContext):
+    run = HarnessRun(
+        run_id="R1",
+        tarefa_trabalho_id="TT-1",
+        agent_id="A1",
+        correlation_id="C1",
+        workspace_ref="WS1",
+        run_state_ref="RS1",
+        authority_context_ref=auth.authority_context_id,
+        task_context_ref="TC-1",
+    )
+    task = TaskContext(
+        task_context_id="TC-1",
+        run_id="R1",
+        tarefa_trabalho_id="TT-1",
+        current_order="execute",
+        task_state_ref="TS-1",
+        authority_context_ref=auth.authority_context_id,
+        workspace_ref="WS1",
+        bootstrap_trace_ref="BT-1",
+    )
+    return run, task
+
+
+def execute_side_effect(gw, auth, **kwargs):
+    run, task = execution(auth)
+    return gw.execute(
+        run_id="R1",
+        authority=auth,
+        run=run,
+        task_context=task,
+        **kwargs,
+    )
+
+
+def canonical_source():
+    return InMemorySourceAdapter({
+        "AUT-T": {"revision_ref": "REV-1"},
+        "AUT-X": {"revision_ref": "REV-1"},
+        "AUT-N": {"revision_ref": "REV-1"},
+    })
+
+
 def gateway(descriptor, response=None):
     registry = ToolRegistry()
     adapter = FakeToolAdapter(response)
     registry.register(descriptor, adapter)
-    return ToolGateway(registry, StateManager(InMemoryStateAdapter())), adapter
+    return ToolGateway(
+        registry,
+        StateManager(InMemoryStateAdapter()),
+        freshness_gate=AuthorityFreshnessGate(canonical_source()),
+    ), adapter
+
+
+def only_audit(gw):
+    records = list(gw.state.state_port._revalidation_records.values())
+    assert len(records) == 1
+    return records[0]
+
+
+def test_side_effect_without_core_freshness_gate_fails_closed_before_tool_port():
+    descriptor = ToolDescriptor(tool_id="drive.write", action_scope="drive:write", risk_level=RiskLevel.HIGH, side_effect=True)
+    registry = ToolRegistry()
+    adapter = FakeToolAdapter({"ok": True})
+    registry.register(descriptor, adapter)
+    gw = ToolGateway(registry, StateManager(InMemoryStateAdapter()))
+    auth = authority(allowed=["drive:write"])
+
+    with pytest.raises(HarnessResolutionError) as exc:
+        execute_side_effect(
+            gw,
+            auth,
+            tool_id="drive.write",
+            payload={"x": 1},
+            business_key="DOC-NO-GATE",
+        )
+    assert "AUTHORITY_UNRESOLVED" in str(exc.value)
+    assert adapter.calls == []
+    audit = only_audit(gw)
+    assert audit["status"] == "BLOCKED"
+    assert audit["outcome"] == "FRESHNESS_GATE_INVALID"
+    assert audit["previous_revision_refs"]["tactical"] == ["REV-1"]
 
 
 def test_side_effect_requires_gate_business_key_and_blocks_duplicate():
@@ -34,27 +133,54 @@ def test_side_effect_requires_gate_business_key_and_blocks_duplicate():
     auth = authority(allowed=["drive:write"], competences=["DRIVE_WRITE"])
 
     with pytest.raises(HarnessResolutionError) as exc:
-        gw.execute(run_id="R1", authority=auth, tool_id="drive.write", payload={})
+        execute_side_effect(gw, auth, tool_id="drive.write", payload={})
     assert "SIDE_EFFECT_UNKNOWN" in str(exc.value)
     assert adapter.calls == []
 
-    result = gw.execute(run_id="R1", authority=auth, tool_id="drive.write", payload={"x": 1}, business_key="DOC-1")
+    result = execute_side_effect(gw, auth, tool_id="drive.write", payload={"x": 1}, business_key="DOC-1")
     assert result.decision.value == "ALLOW"
     assert len(adapter.calls) == 1
 
     with pytest.raises(HarnessResolutionError) as exc:
-        gw.execute(run_id="R1", authority=auth, tool_id="drive.write", payload={"x": 1}, business_key="DOC-1")
+        execute_side_effect(gw, auth, tool_id="drive.write", payload={"x": 1}, business_key="DOC-1")
     assert "RETRY_BLOCKED" in str(exc.value)
     assert len(adapter.calls) == 1
 
 
-def test_forbidden_scope_never_reaches_adapter():
+def test_forbidden_scope_never_reaches_adapter_and_persists_deny():
     descriptor = ToolDescriptor(tool_id="tool", action_scope="finance:pay", side_effect=True)
     gw, adapter = gateway(descriptor)
+    auth = authority(forbidden=["finance:pay"])
     with pytest.raises(HarnessResolutionError) as exc:
-        gw.execute(run_id="R1", authority=authority(forbidden=["finance:pay"]), tool_id="tool", payload={}, business_key="P1")
+        execute_side_effect(gw, auth, tool_id="tool", payload={}, business_key="P1")
     assert "ACTION_FORBIDDEN" in str(exc.value)
     assert adapter.calls == []
+    audit = only_audit(gw)
+    assert audit["status"] == "BLOCKED"
+    assert audit["outcome"] == "DENY"
+    assert audit["decision"] == "DENY"
+    assert audit["error_code"] == "ACTION_FORBIDDEN"
+
+
+def test_side_effect_escalate_is_persisted_and_never_reaches_adapter():
+    descriptor = ToolDescriptor(tool_id="tool", action_scope="ops:change", side_effect=True, required_competence="OPS_ADMIN")
+    gw, adapter = gateway(descriptor)
+    auth = authority(allowed=["ops:change"])
+    with pytest.raises(HarnessResolutionError) as exc:
+        execute_side_effect(
+            gw,
+            auth,
+            tool_id="tool",
+            payload={},
+            business_key="OPS-1",
+        )
+    assert "COMPETENCE_INSUFFICIENT" in str(exc.value)
+    assert adapter.calls == []
+    audit = only_audit(gw)
+    assert audit["status"] == "BLOCKED"
+    assert audit["outcome"] == "ESCALATE"
+    assert audit["decision"] == "ESCALATE"
+    assert audit["error_code"] == "COMPETENCE_INSUFFICIENT"
 
 
 def test_missing_competence_escalates_before_tool_call():
@@ -71,13 +197,45 @@ def test_human_approval_gate_precedes_side_effect():
     gw, adapter = gateway(descriptor)
     auth = authority(allowed=["publish"])
     with pytest.raises(HarnessResolutionError) as exc:
-        gw.execute(run_id="R1", authority=auth, tool_id="tool", payload={}, business_key="PUB-1")
+        execute_side_effect(gw, auth, tool_id="tool", payload={}, business_key="PUB-1")
     assert "APPROVAL_REQUIRED" in str(exc.value)
     assert adapter.calls == []
 
-    result = gw.execute(run_id="R1", authority=auth, tool_id="tool", payload={}, business_key="PUB-1", approved=True)
+    result = execute_side_effect(gw, auth, tool_id="tool", payload={}, business_key="PUB-1", approved=True)
     assert result.decision.value == "ALLOW"
     assert len(adapter.calls) == 1
+
+
+def test_side_effect_toolport_failure_persists_failed_and_unknown_ledger():
+    class RaisingAdapter:
+        def __init__(self): self.calls = []
+        def invoke(self, tool_id, payload):
+            self.calls.append((tool_id, dict(payload)))
+            raise RuntimeError("provider timeout")
+
+    descriptor = ToolDescriptor(tool_id="tool.fail", action_scope="ops:write", side_effect=True)
+    registry = ToolRegistry()
+    adapter = RaisingAdapter()
+    registry.register(descriptor, adapter)
+    manager = StateManager(InMemoryStateAdapter())
+    gw = ToolGateway(registry, manager, freshness_gate=AuthorityFreshnessGate(canonical_source()))
+    auth = authority(allowed=["ops:write"])
+
+    with pytest.raises(RuntimeError, match="provider timeout"):
+        execute_side_effect(
+            gw,
+            auth,
+            tool_id="tool.fail",
+            payload={"x": 1},
+            business_key="FAIL-1",
+        )
+    assert len(adapter.calls) == 1
+    audit = only_audit(gw)
+    assert audit["status"] == "FAILED"
+    assert audit["outcome"] == "TOOLPORT_ERROR"
+    key = "R1:tool.fail:FAIL-1"
+    assert manager.get_side_effect(key).status == IdempotencyStatus.UNKNOWN
+    assert manager.get_side_effect(key).reconciliation_required is True
 
 
 def test_required_evidence_is_enforced_after_execution():

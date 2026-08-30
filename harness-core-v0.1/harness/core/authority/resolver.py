@@ -40,12 +40,13 @@ class AuthorityResolver:
     def _effective_allowed_scopes(*raws: dict) -> list[str]:
         """Intersect allow-lists declared by applicable authority chains.
 
-        Chains that omit `allowed_scopes` add no whitelist constraint. If none
-        declares a whitelist, `*` represents unrestricted-by-whitelist (explicit
-        prohibitions still apply). If declared allow-lists have no common scope,
-        the effective list is empty and no action is automatically authorized.
+        Presence of the `allowed_scopes` key is semantically significant: an
+        explicitly empty list is a revocation and must constrain the effective
+        result to empty. Only chains that omit the key entirely add no whitelist
+        constraint. If none declares a whitelist, `*` represents unrestricted-
+        by-whitelist (explicit prohibitions still apply).
         """
-        declared = [set(raw.get("allowed_scopes", [])) for raw in raws if raw.get("allowed_scopes")]
+        declared = [set(raw.get("allowed_scopes", [])) for raw in raws if "allowed_scopes" in raw]
         if not declared:
             return ["*"]
         effective = declared[0]
