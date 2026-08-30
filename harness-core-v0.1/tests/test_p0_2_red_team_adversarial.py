@@ -14,6 +14,7 @@ from harness.core.identity import IdentityResolver
 from harness.core.state import StateManager
 from harness.core.state.resume_policy import ResumeStatusRejected
 from harness.core.tools import ToolDescriptor, ToolGateway, ToolRegistry
+from harness.ports.versioning import RevisionGuardActiveError
 
 
 def records():
@@ -175,7 +176,7 @@ def test_red_team_tool_toctou_revision_flip_after_check_before_invoke_is_blocked
             source.records["AUT-T"]["revision_ref"] = "T-REV-2"
             return super().create_idempotency_record(key, record)
     state_port = FlipOnLedgerCreateState(); gateway, adapter, _ = tool_gateway(source, state_port)
-    with pytest.raises(HarnessResolutionError):
+    with pytest.raises(RevisionGuardActiveError):
         side_effect(gateway, direct_authority(run_id="R1"), business_key="TOCTOU-TOOL-1", payload={"value": 1})
     assert state_port.attempted is True
     assert source.read("AUT-T")["revision_ref"] == "T-REV-1"
@@ -251,7 +252,7 @@ def test_red_team_runtime_resume_toctou_writer_after_guard_release_record_is_blo
     state = interrupted_state(); manager.persist(state)
     checkpoint = manager.checkpoint(state, validated_step="step-1", resume_instruction="continue")
     runtime = CountingRuntime()
-    with pytest.raises(HarnessResolutionError):
+    with pytest.raises(RevisionGuardActiveError):
         manager.resume(make_run(), runtime, checkpoint.checkpoint_id, freshness_gate=gate)
     assert state_port.attempted is True
     assert source.read("AUT-T")["revision_ref"] == "T-REV-1"
