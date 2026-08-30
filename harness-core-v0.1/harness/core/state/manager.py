@@ -293,10 +293,7 @@ class StateManager:
 
     @staticmethod
     def _effect_key(run_id: str, operation: str, business_key: str) -> str:
-        # business_key names the real-world effect. It must survive run changes so
-        # creating a fresh HarnessRun cannot replay an already completed effect.
-        # run_id remains recorded as provenance in IdempotencyRecord, not identity.
-        return f"{operation}:{business_key}"
+        return f"{run_id}:{operation}:{business_key}"
 
     def begin_side_effect(
         self,
