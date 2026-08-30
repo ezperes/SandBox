@@ -47,19 +47,24 @@ def begin_boundary_audit(
     previous_context: ContextBuildResult | None = None,
     correlation_id: str | None = None,
     checkpoint_ref: str | None = None,
+    agent_id: str | None = None,
+    tarefa_trabalho_id: str | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Create the persisted PENDING record before a sensitive boundary check.
 
     The record intentionally stores the prior authority/context lineage by value,
     so a later BLOCKED/FAILED result remains reconstructible even if canonical
-    sources change again after the attempt.
+    sources change again after the attempt. Execution identity is recorded
+    explicitly when the Core boundary has canonical HarnessRun/TaskContext data.
     """
     now = _utcnow()
     revalidation_id = f"RV-{uuid4()}"
     return {
         "revalidation_id": revalidation_id,
         "run_id": run_id,
+        "agent_id": agent_id,
+        "tarefa_trabalho_id": tarefa_trabalho_id,
         "correlation_id": correlation_id,
         "boundary": boundary,
         "status": "PENDING",
