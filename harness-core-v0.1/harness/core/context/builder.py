@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterable
 from uuid import uuid4
 
@@ -16,6 +16,10 @@ class ContextBuildResult:
     provenance: dict[str, ChainType]
     token_usage: dict[str, int]
     estimated_tokens: int
+    # Canonical source refs whose payloads were actually selected as materialized
+    # context. This is Core provenance used by VersionedReadSet/RevisionGuard; it
+    # does not grant authority and is intentionally separate from TaskContext refs.
+    materialized_source_refs: dict[ChainType, tuple[str, ...]] = field(default_factory=dict)
 
 
 class ContextBuilder:
@@ -30,8 +34,8 @@ class ContextBuilder:
         refs: Iterable[str],
         budget: int,
         seen: set[str],
-    ) -> tuple[list[str], dict[str, int]]:
-        candidates: list[tuple[int, int, str, bool]] = []
+    ) -> tuple[list[str], dict[str, int], list[str]]:
+        candidates: list[tuple[int, int, str, bool, str]] = []
         for ref in refs:
             if ref in seen:
                 continue
@@ -41,13 +45,15 @@ class ContextBuilder:
                 max(1, int(raw.get("estimated_tokens", 1))),
                 str(raw.get("excerpt_ref") or raw.get("context_ref") or ref),
                 bool(raw.get("required", False)),
+                ref,
             ))
-        candidates.sort(key=lambda item: (not item[3], -item[0], item[1], item[2]))
+        candidates.sort(key=lambda item: (not item[3], -item[0], item[1], item[2], item[4]))
 
         selected: list[str] = []
+        selected_sources: list[str] = []
         usage: dict[str, int] = {}
         used = 0
-        for _, tokens, context_ref, required in candidates:
+        for _, tokens, context_ref, required, source_ref in candidates:
             if context_ref in seen:
                 continue
             if not required and used + tokens > budget:
@@ -55,10 +61,11 @@ class ContextBuilder:
             if required and used + tokens > budget:
                 raise ValueError("context budget is insufficient for required context")
             selected.append(context_ref)
+            selected_sources.append(source_ref)
             seen.add(context_ref)
             usage[context_ref] = tokens
             used += tokens
-        return selected, usage
+        return selected, usage, selected_sources
 
     @staticmethod
     def _field(chain_type: ChainType) -> str:
@@ -109,11 +116,13 @@ class ContextBuilder:
         provenance: dict[str, ChainType] = {}
         token_usage: dict[str, int] = {}
         chain_refs: dict[ChainType, list[str]] = {}
+        materialized_source_refs: dict[ChainType, tuple[str, ...]] = {}
         remaining = max_context_tokens
 
         for chain_type in (ChainType.TACTICAL, ChainType.TECHNICAL, ChainType.NORMATIVE):
-            selected, usage = self._select(bootstrap.refs_for(chain_type), remaining, seen)
+            selected, usage, selected_sources = self._select(bootstrap.refs_for(chain_type), remaining, seen)
             chain_refs[chain_type] = selected
+            materialized_source_refs[chain_type] = tuple(selected_sources)
             token_usage.update(usage)
             provenance.update({ref: chain_type for ref in selected})
             remaining -= sum(usage.values())
@@ -131,6 +140,7 @@ class ContextBuilder:
             provenance=provenance,
             token_usage=token_usage,
             estimated_tokens=sum(token_usage.values()),
+            materialized_source_refs=materialized_source_refs,
         )
 
     def rebuild_partial(
@@ -148,16 +158,20 @@ class ContextBuilder:
         task = self.source.read(task_source_ref)
         bootstrap = self.bootstrap.resolve(authority)
         chain_refs: dict[ChainType, list[str]] = {}
+        materialized_source_refs: dict[ChainType, tuple[str, ...]] = {}
         provenance: dict[str, ChainType] = {}
         token_usage: dict[str, int] = {}
         seen: set[str] = set()
 
-        # Preserve unaffected chains without re-reading their sources.
+        # Preserve unaffected chains without re-reading their sources. Their exact
+        # source refs are retained so a later strong RevisionGuard can protect the
+        # preserved materialization during the sensitive boundary.
         for chain_type in (ChainType.TACTICAL, ChainType.TECHNICAL, ChainType.NORMATIVE):
             if chain_type in changed_chains:
                 continue
             refs = list(getattr(previous.task_context, self._field(chain_type)))
             chain_refs[chain_type] = refs
+            materialized_source_refs[chain_type] = tuple(previous.materialized_source_refs.get(chain_type, ()))
             for ref in refs:
                 seen.add(ref)
                 provenance[ref] = chain_type
@@ -170,14 +184,16 @@ class ContextBuilder:
         for chain_type in (ChainType.TACTICAL, ChainType.TECHNICAL, ChainType.NORMATIVE):
             if chain_type not in changed_chains:
                 continue
-            selected, usage = self._select(bootstrap.refs_for(chain_type), remaining, seen)
+            selected, usage, selected_sources = self._select(bootstrap.refs_for(chain_type), remaining, seen)
             chain_refs[chain_type] = selected
+            materialized_source_refs[chain_type] = tuple(selected_sources)
             token_usage.update(usage)
             provenance.update({ref: chain_type for ref in selected})
             remaining -= sum(usage.values())
 
         for chain_type in (ChainType.TACTICAL, ChainType.TECHNICAL, ChainType.NORMATIVE):
             chain_refs.setdefault(chain_type, [])
+            materialized_source_refs.setdefault(chain_type, ())
 
         context = self._task_context(
             run_id=previous.task_context.run_id,
@@ -192,4 +208,5 @@ class ContextBuilder:
             provenance=provenance,
             token_usage=token_usage,
             estimated_tokens=sum(token_usage.values()),
+            materialized_source_refs=materialized_source_refs,
         )
