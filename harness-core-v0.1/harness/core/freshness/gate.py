@@ -6,7 +6,7 @@ from harness.contracts import AuthorityContext, ChainType, HarnessErrorCode, Res
 from harness.core.errors import HarnessResolutionError
 from harness.ports import SourcePort, VersionedReadSet
 
-from .revision_guard import read_versioned_for_sensitive_use
+from .revision_guard import StrongRevisionGuardUnavailable, read_versioned_for_sensitive_use
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +62,11 @@ class AuthorityFreshnessGate:
                     chain.authority_ref,
                     read_set,
                 ).payload
+        except StrongRevisionGuardUnavailable:
+            # Capability absence is different from a stale/unreadable authority
+            # document. Preserve that signal so sensitive callers can explicitly
+            # fail closed on the missing strong-guard contract.
+            raise
         except HarnessResolutionError:
             raise
         except Exception as exc:
