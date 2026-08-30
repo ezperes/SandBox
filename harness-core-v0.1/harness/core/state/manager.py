@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from enum import StrEnum
@@ -8,13 +9,17 @@ from uuid import uuid4
 
 from harness.contracts import Checkpoint, HarnessErrorCode, HarnessRun, RunState
 from harness.core.errors import HarnessResolutionError
-from harness.core.freshness.audit import begin_boundary_audit, finalize_boundary_audit
+from harness.core.freshness.audit import (
+    begin_boundary_audit,
+    finalize_boundary_audit,
+    finalize_runtime_resume_success,
+)
 from harness.core.freshness.resume import ResumeFreshnessGate
 from harness.core.freshness.revision_guard import StrongRevisionGuardUnavailable, hold_strong_revision_guard
 from harness.ports import RuntimePort, StatePort
 from harness.ports.versioning import RevisionConflictError
 
-from .binding import RunStateBindingGuard
+from .binding import RunStateBinding, RunStateBindingGuard
 from .resume_policy import require_resume_status_allowed
 from .runtime_projection import CORE_OWNED_FIELDS, merge_runtime_result
 
@@ -59,6 +64,8 @@ class IdempotencyRecord:
 
 class StateManager:
     """Own canonical RunState/Checkpoint persistence and side-effect ledger semantics."""
+
+    _RESUME_OPERATION = "RuntimePort.resume"
 
     def __init__(self, state_port: StatePort):
         self.state_port = state_port
@@ -114,6 +121,61 @@ class StateManager:
                     checkpoint_id,
                 )
 
+    @staticmethod
+    def _resume_business_key(binding: RunStateBinding) -> str:
+        """Stable identity for one concrete resume right, excluding agent by design."""
+        return json.dumps(
+            [binding.tarefa_trabalho_id, binding.run_state_id, binding.checkpoint_id],
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+
+    def _begin_resume_claim(self, binding: RunStateBinding) -> IdempotencyRecord:
+        """Atomically acquire or safely reopen the persisted right to resume once.
+
+        Initial acquisition reuses StatePort.create_idempotency_record(), whose
+        contract is insert-if-absent. A FAILED resume claim means the previous
+        attempt provably did not cross RuntimePort.resume; reopening therefore uses
+        whole-record CAS so only one retry can win. PENDING, COMPLETED and UNKNOWN
+        never reopen implicitly.
+        """
+        business_key = self._resume_business_key(binding)
+        key = self._effect_key(binding.run_id, self._RESUME_OPERATION, business_key)
+        record = IdempotencyRecord(
+            key=key,
+            run_id=binding.run_id,
+            operation=self._RESUME_OPERATION,
+            business_key=business_key,
+        )
+        if self.state_port.create_idempotency_record(key, record.to_dict()):
+            return record
+
+        current = self.get_side_effect(key)
+        if current.status == IdempotencyStatus.FAILED:
+            expected = current.to_dict()
+            current.status = IdempotencyStatus.PENDING
+            current.attempt += 1
+            current.result = None
+            current.evidence_refs = []
+            current.error = None
+            current.reconciliation_required = False
+            current.updated_at = _utcnow()
+            if self.state_port.compare_and_swap_idempotency_record(
+                key,
+                expected,
+                current.to_dict(),
+            ):
+                return current
+            current = self.get_side_effect(key)
+
+        reason = {
+            IdempotencyStatus.PENDING: "resume already claimed/in progress; duplicate execution blocked",
+            IdempotencyStatus.COMPLETED: "resume already completed/consumed; duplicate execution blocked",
+            IdempotencyStatus.UNKNOWN: "resume outcome unknown; reconciliation required before retry",
+            IdempotencyStatus.FAILED: "resume retry was claimed concurrently; duplicate execution blocked",
+        }[current.status]
+        raise HarnessResolutionError(HarnessErrorCode.RETRY_BLOCKED, reason, key)
+
     def resume(
         self,
         run: HarnessRun,
@@ -132,164 +194,194 @@ class StateManager:
                 checkpoint_id,
             ) from exc
 
-        RunStateBindingGuard.ensure_bound(run, state, checkpoint)
+        binding = RunStateBindingGuard.ensure_bound(run, state, checkpoint)
         require_resume_status_allowed(state.status)
-
-        valid_gate = freshness_gate if type(freshness_gate) is ResumeFreshnessGate else None
-        audit = begin_boundary_audit(
-            run_id=run.run_id,
-            agent_id=run.agent_id,
-            tarefa_trabalho_id=run.tarefa_trabalho_id,
-            correlation_id=run.correlation_id,
-            boundary="RuntimePort.resume",
-            checkpoint_ref=checkpoint_id,
-            previous_authority_context_ref=run.authority_context_ref,
-            previous_task_context_ref=run.task_context_ref,
-            previous_authority=valid_gate.previous_authority if valid_gate else None,
-            previous_context=valid_gate.previous_context if valid_gate else None,
-            metadata={
-                "identity_source_ref": valid_gate.identity_source_ref if valid_gate else None,
-                "task_source_ref": valid_gate.task_source_ref if valid_gate else None,
-                "previous_identity_revision_ref": valid_gate.previous_identity_revision_ref if valid_gate else None,
-            },
-        )
-        self.state_port.save_revalidation_record(audit["revalidation_id"], audit)
-        if audit["revalidation_id"] not in state.decision_refs:
-            state.decision_refs.append(audit["revalidation_id"])
-        self.state_port.save_run_state(state)
-
-        if valid_gate is None:
-            exc = HarnessResolutionError(
-                HarnessErrorCode.AUTHORITY_UNRESOLVED,
-                "resume requires the canonical Core ResumeFreshnessGate before RuntimePort.resume",
-                checkpoint_id,
-            )
-            blocked = finalize_boundary_audit(
-                audit,
-                status="BLOCKED",
-                outcome="FRESHNESS_GATE_INVALID",
-                error=exc,
-            )
-            self.state_port.save_revalidation_record(audit["revalidation_id"], blocked)
-            raise exc
+        claim = self._begin_resume_claim(binding)
+        runtime_invoked = False
 
         try:
-            preparation = valid_gate.prepare(run)
-        except HarnessResolutionError as exc:
-            blocked = finalize_boundary_audit(
-                audit,
-                status="BLOCKED",
-                outcome="FRESHNESS_REJECTED",
-                error=exc,
-            )
-            self.state_port.save_revalidation_record(audit["revalidation_id"], blocked)
-            raise
-        except StrongRevisionGuardUnavailable as exc:
-            blocked = finalize_boundary_audit(
-                audit,
-                status="BLOCKED",
-                outcome="REVISION_GUARD_UNAVAILABLE",
-                error=exc,
-            )
-            self.state_port.save_revalidation_record(audit["revalidation_id"], blocked)
-            raise
-        except Exception as exc:
-            failed = finalize_boundary_audit(
-                audit,
-                status="FAILED",
-                outcome="FRESHNESS_ERROR",
-                error=exc,
-            )
-            self.state_port.save_revalidation_record(audit["revalidation_id"], failed)
-            raise
-
-        owner_ref = f"RESUME:{run.run_id}:{checkpoint_id}"
-        read_set_audit = preparation.versioned_read_set.audit_data()
-        guard = None
-        released = None
-        runtime_error: Exception | None = None
-        resumed: RunState | None = None
-
-        try:
-            with hold_strong_revision_guard(
-                valid_gate.source,
-                preparation.versioned_read_set,
-                owner_ref=owner_ref,
-            ) as guard:
-                released = finalize_boundary_audit(
-                    audit,
-                    status="RELEASED",
-                    outcome="REVALIDATED_AND_GUARDED",
-                    authority_snapshot=preparation.authority_snapshot,
-                    authority_context_ref=preparation.authority.authority_context_id,
-                    context=preparation.context,
-                    changed_chains=preparation.changed_chains,
-                    identity_changed=preparation.identity_changed,
-                    metadata={
-                        "versioned_read_set": read_set_audit,
-                        "revision_guard": guard.audit_data(),
-                    },
-                )
-                self.state_port.save_revalidation_record(audit["revalidation_id"], released)
-
-                run.authority_context_ref = preparation.authority.authority_context_id
-                run.task_context_ref = preparation.context.task_context.task_context_id
-                runtime_run = run.model_copy(deep=True)
-                self.state_port.save_run_state(state)
-
-                canonical_before_runtime = state.model_copy(deep=True)
-                try:
-                    runtime_result = runtime.resume(
-                        runtime_run,
-                        state.model_copy(deep=True),
-                    )
-                    if not isinstance(runtime_result, RunState):
-                        raise HarnessResolutionError(
-                            HarnessErrorCode.CHECKPOINT_INVALID,
-                            "RuntimePort.resume must return canonical RunState",
-                            checkpoint_id,
-                        )
-                    self._reject_runtime_core_owned_mutation(
-                        canonical_before_runtime,
-                        runtime_result,
-                        checkpoint_id,
-                    )
-                    resumed = merge_runtime_result(canonical_before_runtime, runtime_result)
-                except Exception as exc:
-                    runtime_error = exc
-        except (StrongRevisionGuardUnavailable, RevisionConflictError) as exc:
-            conflict_audit = exc.audit_data() if isinstance(exc, RevisionConflictError) else {}
-            blocked = finalize_boundary_audit(
-                audit,
-                status="BLOCKED",
-                outcome="REVISION_GUARD_REJECTED",
-                error=exc,
+            valid_gate = freshness_gate if type(freshness_gate) is ResumeFreshnessGate else None
+            audit = begin_boundary_audit(
+                run_id=run.run_id,
+                agent_id=run.agent_id,
+                tarefa_trabalho_id=run.tarefa_trabalho_id,
+                correlation_id=run.correlation_id,
+                boundary="RuntimePort.resume",
+                checkpoint_ref=checkpoint_id,
+                previous_authority_context_ref=run.authority_context_ref,
+                previous_task_context_ref=run.task_context_ref,
+                previous_authority=valid_gate.previous_authority if valid_gate else None,
+                previous_context=valid_gate.previous_context if valid_gate else None,
                 metadata={
-                    "versioned_read_set": read_set_audit,
-                    "revision_guard": conflict_audit,
+                    "identity_source_ref": valid_gate.identity_source_ref if valid_gate else None,
+                    "task_source_ref": valid_gate.task_source_ref if valid_gate else None,
+                    "previous_identity_revision_ref": valid_gate.previous_identity_revision_ref if valid_gate else None,
+                    "resume_claim_key": claim.key,
                 },
             )
-            self.state_port.save_revalidation_record(audit["revalidation_id"], blocked)
-            raise
+            self.state_port.save_revalidation_record(audit["revalidation_id"], audit)
+            if audit["revalidation_id"] not in state.decision_refs:
+                state.decision_refs.append(audit["revalidation_id"])
+            self.state_port.save_run_state(state)
 
-        guard_final = guard.audit_data() if guard is not None else {}
-        if runtime_error is not None:
-            failed = finalize_boundary_audit(
-                released if released is not None else audit,
-                status="FAILED",
-                outcome="RUNTIME_RESUME_ERROR",
-                error=runtime_error,
-                metadata={"revision_guard_final": guard_final},
+            if valid_gate is None:
+                exc = HarnessResolutionError(
+                    HarnessErrorCode.AUTHORITY_UNRESOLVED,
+                    "resume requires the canonical Core ResumeFreshnessGate before RuntimePort.resume",
+                    checkpoint_id,
+                )
+                blocked = finalize_boundary_audit(
+                    audit,
+                    status="BLOCKED",
+                    outcome="FRESHNESS_GATE_INVALID",
+                    error=exc,
+                )
+                self.state_port.save_revalidation_record(audit["revalidation_id"], blocked)
+                raise exc
+
+            try:
+                preparation = valid_gate.prepare(run)
+            except HarnessResolutionError as exc:
+                blocked = finalize_boundary_audit(
+                    audit,
+                    status="BLOCKED",
+                    outcome="FRESHNESS_REJECTED",
+                    error=exc,
+                )
+                self.state_port.save_revalidation_record(audit["revalidation_id"], blocked)
+                raise
+            except StrongRevisionGuardUnavailable as exc:
+                blocked = finalize_boundary_audit(
+                    audit,
+                    status="BLOCKED",
+                    outcome="REVISION_GUARD_UNAVAILABLE",
+                    error=exc,
+                )
+                self.state_port.save_revalidation_record(audit["revalidation_id"], blocked)
+                raise
+            except Exception as exc:
+                failed = finalize_boundary_audit(
+                    audit,
+                    status="FAILED",
+                    outcome="FRESHNESS_ERROR",
+                    error=exc,
+                )
+                self.state_port.save_revalidation_record(audit["revalidation_id"], failed)
+                raise
+
+            owner_ref = f"RESUME:{run.run_id}:{checkpoint_id}"
+            read_set_audit = preparation.versioned_read_set.audit_data()
+            guard = None
+            released = None
+            runtime_error: Exception | None = None
+            resumed: RunState | None = None
+
+            try:
+                with hold_strong_revision_guard(
+                    valid_gate.source,
+                    preparation.versioned_read_set,
+                    owner_ref=owner_ref,
+                ) as guard:
+                    released = finalize_boundary_audit(
+                        audit,
+                        status="RELEASED",
+                        outcome="REVALIDATED_AND_GUARDED",
+                        authority_snapshot=preparation.authority_snapshot,
+                        authority_context_ref=preparation.authority.authority_context_id,
+                        context=preparation.context,
+                        changed_chains=preparation.changed_chains,
+                        identity_changed=preparation.identity_changed,
+                        metadata={
+                            "versioned_read_set": read_set_audit,
+                            "revision_guard": guard.audit_data(),
+                        },
+                    )
+                    self.state_port.save_revalidation_record(audit["revalidation_id"], released)
+
+                    run.authority_context_ref = preparation.authority.authority_context_id
+                    run.task_context_ref = preparation.context.task_context.task_context_id
+                    runtime_run = run.model_copy(deep=True)
+                    self.state_port.save_run_state(state)
+
+                    canonical_before_runtime = state.model_copy(deep=True)
+                    try:
+                        runtime_invoked = True
+                        runtime_result = runtime.resume(
+                            runtime_run,
+                            state.model_copy(deep=True),
+                        )
+                        if not isinstance(runtime_result, RunState):
+                            raise HarnessResolutionError(
+                                HarnessErrorCode.CHECKPOINT_INVALID,
+                                "RuntimePort.resume must return canonical RunState",
+                                checkpoint_id,
+                            )
+                        self._reject_runtime_core_owned_mutation(
+                            canonical_before_runtime,
+                            runtime_result,
+                            checkpoint_id,
+                        )
+                        resumed = merge_runtime_result(canonical_before_runtime, runtime_result)
+                    except Exception as exc:
+                        runtime_error = exc
+            except (StrongRevisionGuardUnavailable, RevisionConflictError) as exc:
+                conflict_audit = exc.audit_data() if isinstance(exc, RevisionConflictError) else {}
+                blocked = finalize_boundary_audit(
+                    audit,
+                    status="BLOCKED",
+                    outcome="REVISION_GUARD_REJECTED",
+                    error=exc,
+                    metadata={
+                        "versioned_read_set": read_set_audit,
+                        "revision_guard": conflict_audit,
+                    },
+                )
+                self.state_port.save_revalidation_record(audit["revalidation_id"], blocked)
+                raise
+
+            guard_final = guard.audit_data() if guard is not None else {}
+            if runtime_error is not None:
+                failed = finalize_boundary_audit(
+                    released if released is not None else audit,
+                    status="FAILED",
+                    outcome="RUNTIME_RESUME_ERROR",
+                    error=runtime_error,
+                    metadata={"revision_guard_final": guard_final},
+                )
+                self.state_port.save_revalidation_record(audit["revalidation_id"], failed)
+                raise runtime_error
+
+            assert resumed is not None
+            assert released is not None
+            released["metadata"]["revision_guard_final"] = guard_final
+
+            # Terminal success ordering is intentionally conservative:
+            # canonical state first, then terminal trace, then claim consumption.
+            # Any post-runtime failure before claim completion remains fail-closed
+            # because the persisted PENDING/UNKNOWN claim cannot be blindly replayed.
+            self.state_port.save_run_state(resumed)
+            completed_audit = finalize_runtime_resume_success(released)
+            self.state_port.save_revalidation_record(audit["revalidation_id"], completed_audit)
+            self.complete_side_effect(
+                claim.key,
+                result={
+                    "checkpoint_id": checkpoint_id,
+                    "run_state_id": resumed.run_state_id,
+                    "status": resumed.status.value,
+                    "revalidation_id": audit["revalidation_id"],
+                },
+                evidence_refs=list(checkpoint.evidence_refs),
             )
-            self.state_port.save_revalidation_record(audit["revalidation_id"], failed)
-            raise runtime_error
-
-        assert resumed is not None
-        assert released is not None
-        released["metadata"]["revision_guard_final"] = guard_final
-        self.state_port.save_revalidation_record(audit["revalidation_id"], released)
-        self.state_port.save_run_state(resumed)
-        return resumed
+            return resumed
+        except Exception as exc:
+            current = self.get_side_effect(claim.key)
+            if current.status == IdempotencyStatus.PENDING:
+                self.fail_side_effect(
+                    claim.key,
+                    str(exc),
+                    outcome_unknown=runtime_invoked,
+                )
+            raise
 
     @staticmethod
     def _effect_key(run_id: str, operation: str, business_key: str) -> str:
