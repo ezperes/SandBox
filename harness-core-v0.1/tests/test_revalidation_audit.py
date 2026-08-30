@@ -3,7 +3,15 @@ import pytest
 from harness.adapters.sources import InMemorySourceAdapter
 from harness.adapters.state import InMemoryStateAdapter
 from harness.adapters.tools import FakeToolAdapter
-from harness.contracts import AuthorityContext, ChainType, ResolutionChain, ResolutionStatus, RiskLevel
+from harness.contracts import (
+    AuthorityContext,
+    ChainType,
+    HarnessRun,
+    ResolutionChain,
+    ResolutionStatus,
+    RiskLevel,
+    TaskContext,
+)
 from harness.core.errors import HarnessResolutionError
 from harness.core.freshness import AuthorityFreshnessGate
 from harness.core.state import StateManager
@@ -36,6 +44,30 @@ def _authority(*, allowed=None, forbidden=None) -> AuthorityContext:
     )
 
 
+def _execution(authority: AuthorityContext):
+    run = HarnessRun(
+        run_id="R1",
+        tarefa_trabalho_id="MT-1",
+        agent_id="A1",
+        correlation_id="C1",
+        workspace_ref="WS1",
+        run_state_ref="RS1",
+        authority_context_ref=authority.authority_context_id,
+        task_context_ref="TC-AUDIT",
+    )
+    task = TaskContext(
+        task_context_id="TC-AUDIT",
+        run_id="R1",
+        tarefa_trabalho_id="MT-1",
+        current_order="audit",
+        task_state_ref="TASK-STATE-1",
+        authority_context_ref=authority.authority_context_id,
+        workspace_ref="WS1",
+        bootstrap_trace_ref="BT-AUDIT",
+    )
+    return run, task
+
+
 def _registry(*, side_effect: bool = True, response=None):
     registry = ToolRegistry()
     adapter = FakeToolAdapter(response or {"ok": True, "evidence_refs": ["EV-1"]})
@@ -63,11 +95,15 @@ def test_side_effect_without_freshness_persists_blocked_trace_discoverable_by_ru
     port = InMemoryStateAdapter()
     registry, adapter = _registry(side_effect=True)
     gateway = ToolGateway(registry, StateManager(port))
+    authority = _authority(allowed=["ops:write"])
+    run, task = _execution(authority)
 
     with pytest.raises(HarnessResolutionError):
         gateway.execute(
             run_id="R1",
-            authority=_authority(allowed=["ops:write"]),
+            authority=authority,
+            run=run,
+            task_context=task,
             tool_id="tool.audit",
             payload={},
             business_key="K1",
@@ -82,6 +118,8 @@ def test_side_effect_without_freshness_persists_blocked_trace_discoverable_by_ru
     assert record["outcome"] == "FRESHNESS_GATE_INVALID"
     assert record["error_code"] == "AUTHORITY_UNRESOLVED"
     assert record["previous_revision_refs"]["tactical"] == ["REV-1"]
+    assert record["agent_id"] == "A1"
+    assert record["tarefa_trabalho_id"] == "MT-1"
 
 
 def test_stale_side_effect_persists_expected_and_observed_revisions_before_tool_port():
@@ -90,12 +128,15 @@ def test_stale_side_effect_persists_expected_and_observed_revisions_before_tool_
     registry, adapter = _registry(side_effect=True)
     gateway = ToolGateway(registry, StateManager(port), freshness_gate=AuthorityFreshnessGate(source))
     authority = _authority(allowed=["ops:write"])
+    run, task = _execution(authority)
     source.records["AUT-T"]["revision_ref"] = "REV-2"
 
     with pytest.raises(HarnessResolutionError):
         gateway.execute(
             run_id="R1",
             authority=authority,
+            run=run,
+            task_context=task,
             tool_id="tool.audit",
             payload={},
             business_key="K2",
