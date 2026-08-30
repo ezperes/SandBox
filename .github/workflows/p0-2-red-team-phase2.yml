@@ -1,0 +1,39 @@
+name: P0-2 Independent Red Team Phase 2
+
+on:
+  push:
+    branches:
+      - worker/p0-2-red-team-phase2-5a18ce0
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify frozen harness subtree is untouched
+        shell: bash
+        run: |
+          set -euo pipefail
+          FROZEN=5a18ce034987b14617442fc48194bd9dec2f87f2
+          test "$(git rev-parse "$FROZEN:harness-core-v0.1")" = "$(git rev-parse HEAD:harness-core-v0.1)"
+          git diff --exit-code "$FROZEN" HEAD -- harness-core-v0.1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install frozen harness
+        working-directory: harness-core-v0.1
+        run: python -m pip install -e '.[dev]'
+
+      - name: Re-run frozen suite
+        working-directory: harness-core-v0.1
+        run: pytest -q
+
+      - name: External independent attacks
+        env:
+          PYTHONPATH: harness-core-v0.1
+        run: pytest -q audit/p0_2_independent_red_team_phase2/test_frozen_sha_adversarial.py
