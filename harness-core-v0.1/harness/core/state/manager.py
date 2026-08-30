@@ -6,11 +6,13 @@ from enum import StrEnum
 from typing import Any
 from uuid import uuid4
 
-from harness.contracts import Checkpoint, HarnessErrorCode, HarnessRun, RunState
+from harness.contracts import Checkpoint, HarnessErrorCode, HarnessRun, RunState, RunStatus
 from harness.core.errors import HarnessResolutionError
 from harness.core.freshness.audit import begin_boundary_audit, finalize_boundary_audit
 from harness.core.freshness.resume import ResumeFreshnessGate
+from harness.core.freshness.revision_guard import StrongRevisionGuardUnavailable, hold_strong_revision_guard
 from harness.ports import RuntimePort, StatePort
+from harness.ports.versioning import RevisionConflictError
 
 
 class IdempotencyStatus(StrEnum):
@@ -114,6 +116,16 @@ class StateManager:
                 "run state does not point to requested checkpoint",
                 checkpoint_id,
             )
+        if state.status not in {
+            RunStatus.INTERRUPTED,
+            RunStatus.WAITING_APPROVAL,
+            RunStatus.WAITING_EXTERNAL,
+        }:
+            raise HarnessResolutionError(
+                HarnessErrorCode.CHECKPOINT_INVALID,
+                "checkpoint is not resumable from the current run state",
+                checkpoint_id,
+            )
 
         valid_gate = freshness_gate if type(freshness_gate) is ResumeFreshnessGate else None
         audit = begin_boundary_audit(
@@ -174,38 +186,83 @@ class StateManager:
             self.state_port.save_revalidation_record(audit["revalidation_id"], failed)
             raise
 
-        released = finalize_boundary_audit(
-            audit,
-            status="RELEASED",
-            outcome="REVALIDATED",
-            authority_snapshot=preparation.authority_snapshot,
-            authority_context_ref=preparation.authority.authority_context_id,
-            context=preparation.context,
-            changed_chains=preparation.changed_chains,
-            identity_changed=preparation.identity_changed,
-        )
-        self.state_port.save_revalidation_record(audit["revalidation_id"], released)
+        owner_ref = f"RESUME:{run.run_id}:{checkpoint_id}"
+        read_set_audit = preparation.versioned_read_set.audit_data()
+        guard = None
+        released = None
+        runtime_error: Exception | None = None
+        resumed: RunState | None = None
 
-        run.authority_context_ref = preparation.authority.authority_context_id
-        run.task_context_ref = preparation.context.task_context.task_context_id
-        self.state_port.save_run_state(state)
-
-        # decision_refs are Core-owned institutional references. The runtime may
-        # transform technical state, but it may not mint or inject decision refs.
-        canonical_decision_refs = list(state.decision_refs)
         try:
-            resumed = runtime.resume(run, state.model_copy(deep=True))
-        except Exception as exc:
-            failed = finalize_boundary_audit(
-                released,
-                status="FAILED",
-                outcome="RUNTIME_RESUME_ERROR",
+            # Strong RevisionGuard is the linearization boundary. COMPARE ALL and
+            # HOLD are atomic in a conforming SourcePort, and the hold encloses the
+            # entire synchronous RuntimePort.resume call. This is not check->resume.
+            with hold_strong_revision_guard(
+                valid_gate.source,
+                preparation.versioned_read_set,
+                owner_ref=owner_ref,
+            ) as guard:
+                released = finalize_boundary_audit(
+                    audit,
+                    status="RELEASED",
+                    outcome="REVALIDATED_AND_GUARDED",
+                    authority_snapshot=preparation.authority_snapshot,
+                    authority_context_ref=preparation.authority.authority_context_id,
+                    context=preparation.context,
+                    changed_chains=preparation.changed_chains,
+                    identity_changed=preparation.identity_changed,
+                    metadata={
+                        "versioned_read_set": read_set_audit,
+                        "revision_guard": guard.audit_data(),
+                    },
+                )
+                self.state_port.save_revalidation_record(audit["revalidation_id"], released)
+
+                run.authority_context_ref = preparation.authority.authority_context_id
+                run.task_context_ref = preparation.context.task_context.task_context_id
+                self.state_port.save_run_state(state)
+
+                # decision_refs are Core-owned institutional references. The runtime
+                # may transform technical state, but it may not mint/inject them.
+                canonical_decision_refs = list(state.decision_refs)
+                try:
+                    resumed = runtime.resume(run, state.model_copy(deep=True))
+                    resumed.decision_refs = canonical_decision_refs
+                except Exception as exc:
+                    runtime_error = exc
+        except (StrongRevisionGuardUnavailable, RevisionConflictError) as exc:
+            conflict_audit = exc.audit_data() if isinstance(exc, RevisionConflictError) else {}
+            blocked = finalize_boundary_audit(
+                audit,
+                status="BLOCKED",
+                outcome="REVISION_GUARD_REJECTED",
                 error=exc,
+                metadata={
+                    "versioned_read_set": read_set_audit,
+                    "revision_guard": conflict_audit,
+                },
             )
-            self.state_port.save_revalidation_record(audit["revalidation_id"], failed)
+            self.state_port.save_revalidation_record(audit["revalidation_id"], blocked)
             raise
 
-        resumed.decision_refs = canonical_decision_refs
+        # hold_strong_revision_guard has released the guard here, including when
+        # runtime failed. Persist its final mechanical state as audit evidence.
+        guard_final = guard.audit_data() if guard is not None else {}
+        if runtime_error is not None:
+            failed = finalize_boundary_audit(
+                released if released is not None else audit,
+                status="FAILED",
+                outcome="RUNTIME_RESUME_ERROR",
+                error=runtime_error,
+                metadata={"revision_guard_final": guard_final},
+            )
+            self.state_port.save_revalidation_record(audit["revalidation_id"], failed)
+            raise runtime_error
+
+        assert resumed is not None
+        assert released is not None
+        released["metadata"]["revision_guard_final"] = guard_final
+        self.state_port.save_revalidation_record(audit["revalidation_id"], released)
         self.state_port.save_run_state(resumed)
         return resumed
 
