@@ -11,6 +11,11 @@ from harness.core.context import BootstrapResolution, ContextBuildResult
 from harness.core.errors import HarnessResolutionError
 
 
+_RUNTIME_RESUME_BOUNDARY = "RuntimePort.resume"
+_RUNTIME_RESUME_RELEASE_OUTCOME = "REVALIDATED_AND_GUARDED"
+_RUNTIME_RESUME_SUCCESS_OUTCOME = "COMPLETED"
+
+
 def _utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -141,6 +146,49 @@ def finalize_boundary_audit(
     updated["events"].append({"status": status, "at": now, "outcome": outcome, "decision": decision})
     updated["updated_at"] = now
     return updated
+
+
+def finalize_runtime_resume_success(record: dict[str, Any]) -> dict[str, Any]:
+    """Append the terminal success event for a Core-owned Runtime resume trace.
+
+    This function is intentionally pure: it does not persist anything and it does
+    not invoke the Runtime. The caller may use it only after RuntimePort.resume()
+    returned, the runtime result passed the Core firewall/validation, and the
+    accepted canonical RunState was persisted successfully.
+
+    The function fails closed unless the supplied record is exactly the released
+    Runtime resume state produced immediately before the sensitive boundary:
+    RELEASED / REVALIDATED_AND_GUARDED. A repeated call on an already valid
+    terminal COMPLETED record is idempotent and does not append a duplicate event.
+    """
+    current = deepcopy(record)
+    events = current.get("events")
+    if current.get("boundary") != _RUNTIME_RESUME_BOUNDARY:
+        raise ValueError("runtime terminal success requires RuntimePort.resume boundary")
+    if not isinstance(events, list) or not events:
+        raise ValueError("runtime terminal success requires an existing audit event history")
+
+    if current.get("outcome") == _RUNTIME_RESUME_SUCCESS_OUTCOME:
+        last = events[-1]
+        if current.get("status") == "RELEASED" and last.get("outcome") == _RUNTIME_RESUME_SUCCESS_OUTCOME:
+            return current
+        raise ValueError("runtime audit has inconsistent COMPLETED terminal state")
+
+    if current.get("status") != "RELEASED" or current.get("outcome") != _RUNTIME_RESUME_RELEASE_OUTCOME:
+        raise ValueError("runtime terminal success requires RELEASED / REVALIDATED_AND_GUARDED")
+
+    if any(
+        event.get("status") in {"FAILED", "BLOCKED"}
+        or event.get("outcome") == _RUNTIME_RESUME_SUCCESS_OUTCOME
+        for event in events
+    ):
+        raise ValueError("runtime terminal success cannot follow a failed, blocked, or completed history")
+
+    return finalize_boundary_audit(
+        current,
+        status="RELEASED",
+        outcome=_RUNTIME_RESUME_SUCCESS_OUTCOME,
+    )
 
 
 @dataclass(frozen=True, slots=True)
