@@ -114,7 +114,9 @@ def test_t10_resume_re_resolves_changed_chain_and_rebuilds_only_affected_context
     assert len(audit_refs) == 1
     audit = state_port.load_revalidation_record(audit_refs[0])
     assert audit["status"] == "RELEASED"
-    assert [event["status"] for event in audit["events"]] == ["PENDING", "RELEASED"]
+    assert audit["outcome"] == "COMPLETED"
+    assert [event["status"] for event in audit["events"]] == ["PENDING", "RELEASED", "RELEASED"]
+    assert [event.get("outcome") for event in audit["events"]] == [None, "REVALIDATED_AND_GUARDED", "COMPLETED"]
     assert audit["boundary"] == "RuntimePort.resume"
     assert audit["previous_authority_context_ref"] == "AC-OLD"
     assert audit["previous_revision_refs"]["tactical"] == ["T-REV-1"]
@@ -180,6 +182,7 @@ def test_t10_revalidation_evidence_is_persisted_before_runtime_resume():
             assert len(audit_refs) == 1
             audit = state_port.load_revalidation_record(audit_refs[0])
             assert audit["status"] == "RELEASED"
+            assert audit["outcome"] == "REVALIDATED_AND_GUARDED"
             assert audit["authority_context_ref"] == run.authority_context_ref
             assert audit["task_context"]["task_context_id"] == run.task_context_ref
             current_state.status = RunStatus.COMPLETED
