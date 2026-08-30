@@ -233,7 +233,7 @@ def test_side_effect_toolport_failure_persists_failed_and_unknown_ledger():
     audit = only_audit(gw)
     assert audit["status"] == "FAILED"
     assert audit["outcome"] == "TOOLPORT_ERROR"
-    key = "tool.fail:FAIL-1"
+    key = "R1:tool.fail:FAIL-1"
     assert manager.get_side_effect(key).status == IdempotencyStatus.UNKNOWN
     assert manager.get_side_effect(key).reconciliation_required is True
 
