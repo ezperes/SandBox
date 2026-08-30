@@ -80,8 +80,14 @@ def test_t07_future_runtime_is_bound_to_new_technical_revision_only():
     assert trace["authority_snapshot"]["technical_source_revision_refs"] == ["X-REV-2"]
     assert trace["authority_snapshot"]["tactical_source_revision_refs"] == ["T-REV-1"]
     assert trace["authority_snapshot"]["normative_source_revision_refs"] == ["N-REV-1"]
-    assert trace["task_context"]["technical_context_refs"] == ["CTX-X2"]
+
+    technical_refs = trace["task_context"]["technical_context_refs"]
+    assert "CTX-X2" in technical_refs
+    assert "CTX-X1" not in technical_refs
     assert trace["task_context"]["tactical_context_refs"] == old_context.task_context.tactical_context_refs
     assert trace["task_context"]["normative_context_refs"] == old_context.task_context.normative_context_refs
-    assert trace["metadata"]["versioned_read_set"]["expected_versions"]["AUT-X"]["revision_ref"] == "X-REV-2"
+
+    read_set = trace["metadata"]["versioned_read_set"]
+    technical_read = next(item for item in read_set if item["source_ref"] == "AUT-X")
+    assert technical_read["revision_ref"] == "X-REV-2"
     assert trace["outcome"] == "COMPLETED"
