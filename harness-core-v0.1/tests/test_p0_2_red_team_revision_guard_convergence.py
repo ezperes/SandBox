@@ -9,6 +9,8 @@ def test_red_team_no_parallel_revision_protection_family():
     forbidden_symbols = (
         "RevisionLeasePort",
         "RuntimeResumeFence",
+        "RevisionSnapshot",
+        "ResumeExecutionToken",
         "ToolBoundaryFence",
         "RevisionFenceSource",
     )
