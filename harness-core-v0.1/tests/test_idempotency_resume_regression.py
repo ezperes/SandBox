@@ -198,14 +198,16 @@ def test_revision_change_revalidates_resume_but_completed_effect_still_does_not_
     assert list(resume_records[0]["changed_chains"]) == ["TACTICAL"]
 
 
-def test_cross_run_same_effect_identity_is_blocked_instead_of_reopened():
+def test_cross_run_same_business_key_does_not_reuse_another_runs_ledger():
     source = InMemorySourceAdapter(records())
     _, authority_r1, context_r1 = resolve(source, "R1"); _, authority_r2, context_r2 = resolve(source, "R2")
     manager = StateManager(InMemoryStateAdapter()); gw, adapter = gateway(manager, source)
-    first = tool_call(gw, authority_r1.context, context_r1, run_id="R1", payload={"run": 1}, business_key="SHARED-ORDER")
-    assert first.idempotency_key == "ops.write:SHARED-ORDER"
-    assert_retry_blocked(lambda: tool_call(gw, authority_r2.context, context_r2, run_id="R2", payload={"run": 2}, business_key="SHARED-ORDER"))
-    assert len(adapter.calls) == 1
+    r1 = tool_call(gw, authority_r1.context, context_r1, run_id="R1", payload={"run": 1}, business_key="SHARED-ORDER")
+    r2 = tool_call(gw, authority_r2.context, context_r2, run_id="R2", payload={"run": 2}, business_key="SHARED-ORDER")
+    assert r1.idempotency_key != r2.idempotency_key
+    assert r1.idempotency_key.startswith("R1:")
+    assert r2.idempotency_key.startswith("R2:")
+    assert len(adapter.calls) == 2
 
 
 def test_same_business_key_cannot_bypass_checkpoint_run_binding_on_wrong_resume():
