@@ -86,10 +86,20 @@ Tests cover:
 
 `StateManager` is intentionally untouched to avoid overlapping the state-integrity integration front. The Integrator only needs to import and call the policy at the resume admission point.
 
+## Validation
+
+GitHub Actions Harness Core CI #205 passed on the worker PR before this documentation-only finalization:
+
+- `pytest`: 81 passed;
+- schema export: 17 schemas;
+- schema drift: clean.
+
+The final documentation-only commit must retain the same green checks before handoff.
+
 ## Failed attempt → cause → correct solution
 
-No code/test failure occurred during the policy implementation itself. Any CI/tooling attempt that fails will be recorded in the final worker handoff with cause and corrected validation path.
+No code, test, or validation attempt failed in this worker. No corrective implementation detour was required.
 
 ## Status
 
-Implementation is designed to be `READY_FOR_INTEGRATION` if full CI, schema export, and schema drift validation remain green.
+`READY_FOR_INTEGRATION` after the final CI confirms the documentation-only head remains green.
