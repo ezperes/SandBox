@@ -244,7 +244,8 @@ def test_red_team_tool_toctou_revision_flip_after_check_before_invoke_is_blocked
 
     gateway, adapter, _ = tool_gateway(source, FlipOnLedgerCreateState())
 
-    with pytest.raises(HarnessResolutionError):
+    blocked = False
+    try:
         gateway.execute(
             run_id="R1",
             authority=direct_authority(run_id="R1"),
@@ -252,9 +253,12 @@ def test_red_team_tool_toctou_revision_flip_after_check_before_invoke_is_blocked
             payload={"value": 1},
             business_key="TOCTOU-TOOL-1",
         )
+    except HarnessResolutionError:
+        blocked = True
 
     assert source.records["AUT-T"]["revision_ref"] == "T-REV-2"
-    assert adapter.calls == []
+    assert adapter.calls == [], f"ToolPort invoked after revision flip: {adapter.calls!r}"
+    assert blocked is True
 
 
 def test_red_team_resume_rejects_foreign_task_in_runstate_before_runtime():
@@ -373,11 +377,15 @@ def test_red_team_runtime_resume_toctou_revision_flip_after_revalidation_before_
     )
     runtime = CountingRuntime()
 
-    with pytest.raises(HarnessResolutionError):
+    blocked = False
+    try:
         manager.resume(make_run(), runtime, checkpoint.checkpoint_id, freshness_gate=gate)
+    except HarnessResolutionError:
+        blocked = True
 
     assert source.records["AUT-T"]["revision_ref"] == "T-REV-2"
-    assert runtime.resume_calls == 0
+    assert runtime.resume_calls == 0, "RuntimePort.resume was reached after revision flip"
+    assert blocked is True
 
 
 def test_red_team_repeated_resume_same_checkpoint_does_not_reenter_runtime():
