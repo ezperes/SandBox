@@ -36,4 +36,4 @@ jobs:
       - name: External independent attacks
         env:
           PYTHONPATH: harness-core-v0.1
-        run: pytest -q audit/p0_2_independent_red_team_phase2/test_frozen_sha_adversarial.py
+        run: pytest -q audit/p0_2_independent_red_team_phase2
