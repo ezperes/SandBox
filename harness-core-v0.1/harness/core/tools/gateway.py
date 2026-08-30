@@ -48,6 +48,28 @@ class ToolGateway:
             source_ref or tool_id,
         )
 
+    @staticmethod
+    def _freshness_failure_metadata(
+        authority: AuthorityContext,
+        read_set: VersionedReadSet,
+        source_ref: str | None,
+    ) -> dict[str, Any]:
+        metadata: dict[str, Any] = {"versioned_read_set": read_set.audit_data()}
+        if not source_ref:
+            return metadata
+        observed = read_set.get(source_ref)
+        if observed is not None:
+            metadata["observed_revision_ref"] = observed.revision_ref
+        for chain in (
+            authority.tactical_chain_trace,
+            authority.technical_chain_trace,
+            authority.normative_chain_trace,
+        ):
+            if chain is not None and chain.authority_ref == source_ref:
+                metadata["expected_revision_refs"] = list(chain.source_revision_refs)
+                break
+        return metadata
+
     def execute(
         self,
         *,
@@ -90,9 +112,6 @@ class ToolGateway:
         freshness_checks: list[dict[str, Any]] = []
         read_set = VersionedReadSet()
 
-        # F5: every side effect must name a complete current execution. No
-        # inference from AuthorityContext is allowed because historically valid
-        # authority from another run/agent/task must fail closed.
         if descriptor.side_effect:
             if run is None or task_context is None:
                 exc = HarnessResolutionError(
@@ -139,9 +158,6 @@ class ToolGateway:
                 ))
                 raise
 
-            # Every new external side effect requires the concrete Core-owned
-            # freshness gate, and its canonical reads are accumulated in the same
-            # VersionedReadSet consumed by the one shared RevisionGuard family.
             if type(self.freshness_gate) is not AuthorityFreshnessGate:
                 exc = HarnessResolutionError(
                     HarnessErrorCode.AUTHORITY_UNRESOLVED,
@@ -167,6 +183,7 @@ class ToolGateway:
                     outcome="FRESHNESS_REJECTED",
                     decision=Decision.ESCALATE.value,
                     error=exc,
+                    metadata=self._freshness_failure_metadata(authority, read_set, exc.source_ref),
                 ))
                 raise
             except StrongRevisionGuardUnavailable as exc:
@@ -177,6 +194,7 @@ class ToolGateway:
                     outcome="REVISION_GUARD_UNAVAILABLE",
                     decision=Decision.ESCALATE.value,
                     error=wrapped,
+                    metadata={"versioned_read_set": read_set.audit_data()},
                 ))
                 raise wrapped from exc
             except Exception as exc:
@@ -185,6 +203,7 @@ class ToolGateway:
                     status="FAILED",
                     outcome="FRESHNESS_ERROR",
                     error=exc,
+                    metadata={"versioned_read_set": read_set.audit_data()},
                 ))
                 raise
 
@@ -255,6 +274,20 @@ class ToolGateway:
                 ))
                 raise
             evidence_refs = tuple(str(ref) for ref in output.get("evidence_refs", []))
+            if descriptor.evidence_required and not evidence_refs:
+                exc = HarnessResolutionError(
+                    HarnessErrorCode.VERIFICATION_FAILED,
+                    "tool completed but required evidence was not returned",
+                    tool_id,
+                )
+                self._save_audit(finalize_boundary_audit(
+                    released,
+                    status="FAILED",
+                    outcome="VERIFICATION_FAILED",
+                    decision=decision.value,
+                    error=exc,
+                ))
+                raise exc
             completed = finalize_boundary_audit(
                 released,
                 status="RELEASED",
@@ -292,10 +325,6 @@ class ToolGateway:
         guard = None
         guarded_audit = None
         try:
-            # Deliberate ordering: acquire the strong guard before reserving the
-            # side-effect ledger. A stale authorization therefore creates no
-            # misleading PENDING entry. The hold then spans the short reservation
-            # and the full synchronous ToolPort.invoke call.
             with hold_strong_revision_guard(
                 self.freshness_gate.source,
                 read_set,
