@@ -4,7 +4,9 @@ from dataclasses import dataclass
 
 from harness.contracts import AuthorityContext, ChainType, HarnessErrorCode, ResolutionChain, ResolutionStatus
 from harness.core.errors import HarnessResolutionError
-from harness.ports import SourcePort
+from harness.ports import SourcePort, VersionedReadSet
+
+from .revision_guard import read_versioned_for_sensitive_use
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,12 +25,20 @@ class AuthorityFreshnessGate:
     AuthorityContext still match the canonical SourcePort at a sensitive
     boundary. A mismatch invalidates reuse of that context and requires the
     caller/coordinator to re-resolve before retrying.
+
+    When a VersionedReadSet is supplied, every canonical read used by this
+    freshness decision is captured in that same set so the caller can protect the
+    later sensitive use with the canonical strong RevisionGuard.
     """
 
     def __init__(self, source: SourcePort):
         self.source = source
 
-    def _check_chain(self, chain: ResolutionChain | None) -> FreshnessCheck | None:
+    def _check_chain(
+        self,
+        chain: ResolutionChain | None,
+        read_set: VersionedReadSet | None = None,
+    ) -> FreshnessCheck | None:
         if chain is None or chain.status == ResolutionStatus.NOT_APPLICABLE_JUSTIFIED:
             return None
         if not chain.authority_ref:
@@ -44,7 +54,16 @@ class AuthorityFreshnessGate:
                 chain.authority_ref,
             )
         try:
-            raw = self.source.read(chain.authority_ref)
+            if read_set is None:
+                raw = self.source.read(chain.authority_ref)
+            else:
+                raw = read_versioned_for_sensitive_use(
+                    self.source,
+                    chain.authority_ref,
+                    read_set,
+                ).payload
+        except HarnessResolutionError:
+            raise
         except Exception as exc:
             raise HarnessResolutionError(
                 HarnessErrorCode.AUTHORITY_UNRESOLVED,
@@ -71,7 +90,11 @@ class AuthorityFreshnessGate:
             current_revision_ref=current,
         )
 
-    def ensure_current(self, authority: AuthorityContext) -> tuple[FreshnessCheck, ...]:
+    def ensure_current(
+        self,
+        authority: AuthorityContext,
+        read_set: VersionedReadSet | None = None,
+    ) -> tuple[FreshnessCheck, ...]:
         checks: list[FreshnessCheck] = []
         seen: set[tuple[str, tuple[str, ...]]] = set()
         for chain in (
@@ -79,7 +102,7 @@ class AuthorityFreshnessGate:
             authority.technical_chain_trace,
             authority.normative_chain_trace,
         ):
-            result = self._check_chain(chain)
+            result = self._check_chain(chain, read_set)
             if result is None:
                 continue
             key = (result.authority_ref, result.expected_revision_refs)
