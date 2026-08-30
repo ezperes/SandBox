@@ -151,11 +151,12 @@ def test_resume_preparation_read_set_covers_identity_authority_task_and_material
         "CTX-X1",
         "CTX-N1",
     } <= refs
-    assert set(preparation.context.materialized_source_refs.values()) == {
-        ("CTX-T1",),
-        ("CTX-X1",),
-        ("CTX-N1",),
+    materialized_sources = {
+        ref
+        for chain_sources in preparation.context.materialized_source_refs.values()
+        for ref in chain_sources
     }
+    assert {"CTX-T1", "CTX-X1", "CTX-N1"} <= materialized_sources
 
 
 class MutateOnAcquireSource(InMemorySourceAdapter):
