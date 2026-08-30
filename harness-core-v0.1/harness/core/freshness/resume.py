@@ -7,7 +7,25 @@ from harness.core.authority import AuthorityResolver
 from harness.core.context import ContextBuildResult, ContextBuilder
 from harness.core.errors import HarnessResolutionError
 from harness.core.identity import IdentityResolver
-from harness.ports import SourcePort
+from harness.ports import SourcePort, VersionedReadSet
+
+from .revision_guard import StrongRevisionGuardUnavailable, read_versioned_for_sensitive_use
+
+
+class _VersionedReadSource:
+    """Source view that records every Core read into one VersionedReadSet.
+
+    This is not a second guard/lease abstraction. It is only a read-tracking view
+    over the canonical SourcePort so existing resolvers/builders participate in
+    the same VersionedReadSet consumed by RevisionGuard.
+    """
+
+    def __init__(self, source: SourcePort, read_set: VersionedReadSet):
+        self._source = source
+        self._read_set = read_set
+
+    def read(self, source_ref: str) -> dict:
+        return read_versioned_for_sensitive_use(self._source, source_ref, self._read_set).payload
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,14 +35,15 @@ class ResumePreparation:
     context: ContextBuildResult
     changed_chains: frozenset[ChainType]
     identity_changed: bool
+    versioned_read_set: VersionedReadSet
 
 
 class ResumeFreshnessGate:
     """Core-owned revalidation boundary required before RuntimePort.resume().
 
-    It compares the identity and authority revisions captured before interruption
-    with current canonical sources. Any relevant drift triggers canonical
-    re-resolution and selective context rebuild before the runtime may resume.
+    Preparation re-resolves identity/authority/context and records every canonical
+    source materially used in a VersionedReadSet. The caller must acquire and hold
+    the canonical strong RevisionGuard for that exact set across RuntimePort.resume().
     """
 
     def __init__(
@@ -71,7 +90,7 @@ class ResumeFreshnessGate:
             )
         return revision
 
-    def _changed_chains(self) -> set[ChainType]:
+    def _changed_chains(self, source: SourcePort) -> set[ChainType]:
         changed: set[ChainType] = set()
         seen: dict[str, str] = {}
         for chain in (
@@ -90,14 +109,49 @@ class ResumeFreshnessGate:
                 )
             current = seen.get(chain.authority_ref)
             if current is None:
-                current = self._chain_current_revision(self.source, chain.authority_ref)
+                current = self._chain_current_revision(source, chain.authority_ref)
                 seen[chain.authority_ref] = current
             if current not in expected:
                 changed.add(chain.chain_type)
         return changed
 
+    @staticmethod
+    def _context_field(chain_type: ChainType) -> str:
+        return {
+            ChainType.TACTICAL: "tactical_context_refs",
+            ChainType.TECHNICAL: "technical_context_refs",
+            ChainType.NORMATIVE: "normative_context_refs",
+        }[chain_type]
+
+    def _record_preserved_materialized_sources(
+        self,
+        context: ContextBuildResult,
+        read_set: VersionedReadSet,
+    ) -> None:
+        """Add preserved materialized context sources not re-read by partial rebuild.
+
+        ContextBuilder now retains exact canonical source refs separately from the
+        context/excerpt refs exposed in TaskContext. If a selected preserved chain
+        lacks that provenance, strong protection cannot be proven and resume fails
+        closed rather than guessing that a context_ref is itself a source_ref.
+        """
+
+        for chain_type in (ChainType.TACTICAL, ChainType.TECHNICAL, ChainType.NORMATIVE):
+            selected_context_refs = tuple(getattr(context.task_context, self._context_field(chain_type)))
+            source_refs = tuple(context.materialized_source_refs.get(chain_type, ()))
+            if selected_context_refs and not source_refs:
+                raise StrongRevisionGuardUnavailable(
+                    f"resume context lacks materialized source provenance for {chain_type.value}"
+                )
+            for source_ref in source_refs:
+                if read_set.get(source_ref) is None:
+                    read_versioned_for_sensitive_use(self.source, source_ref, read_set)
+
     def prepare(self, run: HarnessRun) -> ResumePreparation:
-        current_identity = IdentityResolver(self.source).resolve(self.identity_source_ref)
+        read_set = VersionedReadSet()
+        versioned_source = _VersionedReadSource(self.source, read_set)
+
+        current_identity = IdentityResolver(versioned_source).resolve(self.identity_source_ref)
         if current_identity.agent_id != run.agent_id:
             raise HarnessResolutionError(
                 HarnessErrorCode.IDENTITY_UNRESOLVED,
@@ -112,8 +166,8 @@ class ResumeFreshnessGate:
             )
 
         identity_revision_changed = current_identity.source_revision_ref != self.previous_identity_revision_ref
-        changed_chains = self._changed_chains()
-        resolution = AuthorityResolver(self.source).resolve(run.run_id, current_identity)
+        changed_chains = self._changed_chains(versioned_source)
+        resolution = AuthorityResolver(versioned_source).resolve(run.run_id, current_identity)
 
         previous_refs = {
             ChainType.TACTICAL: tuple(self.previous_authority.tactical_authority_refs),
@@ -130,7 +184,7 @@ class ResumeFreshnessGate:
         if identity_changed:
             changed_chains = {ChainType.TACTICAL, ChainType.TECHNICAL, ChainType.NORMATIVE}
 
-        builder = ContextBuilder(self.source)
+        builder = ContextBuilder(versioned_source)
         if changed_chains:
             context = builder.rebuild_partial(
                 self.previous_context,
@@ -140,12 +194,12 @@ class ResumeFreshnessGate:
                 max_context_tokens=self.max_context_tokens,
             )
         else:
-            # Rebind to the freshly resolved authority even when materialized chain
-            # content is unchanged, so the resumed run points at a current snapshot.
+            # Rebind to freshly resolved authority while preserving the previously
+            # selected context refs. TASK itself is read through versioned_source.
             context = builder._task_context(
                 run_id=self.previous_context.task_context.run_id,
                 authority=resolution.context,
-                task=self.source.read(self.task_source_ref),
+                task=versioned_source.read(self.task_source_ref),
                 bootstrap=self.previous_context.bootstrap,
                 chain_refs={
                     ChainType.TACTICAL: list(self.previous_context.task_context.tactical_context_refs),
@@ -159,7 +213,13 @@ class ResumeFreshnessGate:
                 provenance=dict(self.previous_context.provenance),
                 token_usage=dict(self.previous_context.token_usage),
                 estimated_tokens=self.previous_context.estimated_tokens,
+                materialized_source_refs=dict(self.previous_context.materialized_source_refs),
             )
+
+        # Partial rebuild deliberately avoids reading preserved materialized
+        # documents. Add those exact sources now so the strong guard protects them
+        # across RuntimePort.resume as part of the same VersionedReadSet.
+        self._record_preserved_materialized_sources(context, read_set)
 
         return ResumePreparation(
             authority=resolution.context,
@@ -167,4 +227,5 @@ class ResumeFreshnessGate:
             context=context,
             changed_chains=frozenset(changed_chains),
             identity_changed=identity_changed,
+            versioned_read_set=read_set,
         )
