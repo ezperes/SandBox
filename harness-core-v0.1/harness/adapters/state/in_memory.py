@@ -8,7 +8,7 @@ from harness.contracts import Checkpoint, RunState
 
 
 class InMemoryStateAdapter:
-    """Development StatePort with atomic idempotency and audit records."""
+    """Development StatePort with process-local linearizable record claims and CAS."""
 
     def __init__(self):
         self._states: dict[str, RunState] = {}
@@ -74,3 +74,19 @@ class InMemoryStateAdapter:
             if key not in self._idempotency_records:
                 raise KeyError(key)
             self._idempotency_records[key] = deepcopy(record)
+
+    def compare_and_swap_idempotency_record(
+        self,
+        key: str,
+        expected: dict[str, Any],
+        replacement: dict[str, Any],
+    ) -> bool:
+        """Atomically replace one record iff its entire persisted value is unchanged."""
+        if not key.strip():
+            raise ValueError("idempotency key must be explicit")
+        with self._lock:
+            current = self._idempotency_records.get(key)
+            if current is None or current != expected:
+                return False
+            self._idempotency_records[key] = deepcopy(replacement)
+            return True
