@@ -72,16 +72,37 @@ _assert_ownership_is_complete()
 
 
 def project_runtime_payload(state: RunState) -> dict[str, Any]:
-    """Project canonical RunState into the technical subset visible as runtime state.
-
-    Core-owned identifiers, institutional task identity, decisions and checkpoint
-    authority never enter this payload. Controlled status is included read-only as
-    execution context; runtime output is validated again on merge.
-    """
+    """Project canonical RunState into the technical subset visible as runtime state."""
 
     raw = state.model_dump(mode="python")
     allowed = RUNTIME_OWNED_FIELDS | {"status"}
     return {field: deepcopy(raw[field]) for field in allowed}
+
+
+def validate_runtime_core_fields_unchanged(
+    canonical: RunState,
+    runtime_result: RunState | Mapping[str, Any],
+) -> None:
+    """Reject an explicit attempt to return different Core-owned state identity.
+
+    ``merge_runtime_result`` remains a tolerant allow-list merger for direct
+    projection use, preserving the F4 worker contract. The sensitive resume
+    boundary calls this validator first so a hostile runtime cannot silently probe
+    or attempt to rewrite canonical run/task/checkpoint/decision identity.
+    """
+
+    if isinstance(runtime_result, RunState):
+        incoming = runtime_result.model_dump(mode="python")
+    elif isinstance(runtime_result, Mapping):
+        incoming = dict(runtime_result)
+    else:
+        raise TypeError("runtime result must be RunState or mapping")
+
+    for field in sorted(CORE_OWNED_FIELDS.intersection(incoming)):
+        if incoming[field] != getattr(canonical, field):
+            raise RuntimeStateViolation(
+                f"runtime attempted to override Core-owned field {field!r}"
+            )
 
 
 def merge_runtime_result(
