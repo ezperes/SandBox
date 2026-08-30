@@ -8,7 +8,7 @@ Status: `READY_FOR_INDEPENDENT_REAUDIT` pending CI on this exact report/freeze c
 - Fixed rework base: `5a18ce034987b14617442fc48194bd9dec2f87f2`
 - Worker A / B1 final SHA: `3d019d1fe8ce64b939d3337449e5e8d18b3528a3`
 - Worker B / B2 final SHA: `4631d7d694d6341c2e191878ab78375c97885962`
-- Last green implementation candidate before this report: `34a2f2d2f82418a29de87b880a1fd68f276ea0bd`
+- Last green implementation candidate before freeze documentation: `34a2f2d2f82418a29de87b880a1fd68f276ea0bd`
 - Focused-evidence candidate: `de85ad06122bfc8e0baebf70ed526a94a412c8a5`
 - CI-only PR: `#40`, draft, base `integration/p0-2-freshness-consolidated@5a18ce034987b14617442fc48194bd9dec2f87f2`; DO NOT MERGE.
 - PR #17 was not merged or moved by this rework.
@@ -57,7 +57,9 @@ No ToolGateway, source versioning, RevisionGuard, authority resolver, context re
 - `tests/test_resume_freshness_gate.py` — one obsolete success-trace assertion strengthened to require B2 terminal `COMPLETED`; freshness assertions preserved;
 - `tests/test_p0_2_red_team_revision_guard_convergence.py` — existing RT-12 tripwire strengthened to include all six prohibited duplicate-family symbols.
 
-Temporary focused CI steps were used only to capture separated evidence and then the workflow was restored byte-for-byte to the fixed-base workflow before this report/freeze commit.
+Temporary focused CI steps were used only to capture separated evidence and were removed afterward.
+
+One non-production CI hardening remains intentionally in `.github/workflows/harness-core-ci.yml`: `actions/checkout` explicitly selects `${{ github.event.pull_request.head.sha || github.sha }}`. This is required by the second-freeze protocol so the final gate executes the exact candidate commit rather than GitHub's synthetic pull-request merge ref. It does not alter Harness production semantics.
 
 ## Git conflicts
 
@@ -298,7 +300,7 @@ The RT-12 structural scan over production Python passed with all prohibited symb
 
 No resume claim was used as a substitute for `RevisionGuard`, and no revision guard was used as a substitute for resume exclusivity.
 
-## Full CI evidence before freeze report
+## CI evidence before final exact-SHA freeze gate
 
 Harness Core CI run `33330667277`, head `8210bd0a73e48f2dd83b41483a26d46adc705714`:
 
@@ -320,12 +322,15 @@ schemas:     17 exported
 drift:       clean
 ```
 
-The workflow was restored to its fixed-base form in `34a2f2d2f82418a29de87b880a1fd68f276ea0bd` before this report/freeze commit.
+A later run on report SHA `94b8ed45915315db86374be9d4fe9ec41ae9deaf` also passed `182` tests, exported `17` schemas and had clean drift, but its checkout used GitHub's synthetic PR merge ref. Because the freeze requirement says **CI on the exact final commit**, that run is supporting evidence only and is not used as the final freeze gate.
+
+Commit `90fd4dbe2c8c3e82055063f2919a95395de9254b` hardens the CI checkout to select the exact PR head SHA (or `github.sha` for push). This report update is the new proposed second-freeze commit; no Harness production file changed after the previously green implementation candidate.
 
 ## Incongruence check
 
 - fixed merge base remains exactly `5a18ce034987b14617442fc48194bd9dec2f87f2`;
 - only B1/B2 production areas changed;
+- the additional workflow delta is CI-only and exists solely to prove the exact freeze commit;
 - no second revision/fence architecture exists;
 - resume claim and RevisionGuard protect different invariants;
 - success TRACE cannot precede canonical state persistence;
@@ -341,10 +346,11 @@ The workflow was restored to its fixed-base form in `34a2f2d2f82418a29de87b880a1
 1. **Synthetic tree ref move rejected by connector before mutation** → tooling path could not update the branch ref through that action → continue with Contents API fast-forward writes on the already-fixed branch.
 2. **Integration CAS-retry fixture could consume its barrier during setup** → synchronization primitive covered setup as well as contenders → scope/enable the barrier only for concurrent contenders; assertions unchanged.
 3. **First consolidated full CI: 181 pass / 1 fail** → an old T10 test still expected successful Runtime history to end at `REVALIDATED_AND_GUARDED` → strengthen the test to require B2's terminal `PENDING -> REVALIDATED_AND_GUARDED -> COMPLETED`; no production rollback and no freshness assertion weakened.
+4. **First report/freeze CI checked out PR merge ref rather than exact head commit** → GitHub's default `pull_request` checkout materializes `refs/pull/<n>/merge` → harden checkout to `${{ github.event.pull_request.head.sha || github.sha }}` and issue a new freeze commit; do not claim the synthetic-merge run as exact-SHA evidence.
 
 ## Freeze rule
 
-This report commit is the proposed **second freeze commit**. It must pass the canonical Harness Core CI on this exact head SHA before its SHA may be returned as `SECOND_FROZEN_SHA`.
+This report update is the proposed **second freeze commit**. It must pass the canonical Harness Core CI with checkout proving `git HEAD` equals this exact commit SHA before its SHA may be returned as `SECOND_FROZEN_SHA`.
 
 Final external state after green exact-SHA CI: `READY_FOR_INDEPENDENT_REAUDIT`.
 
