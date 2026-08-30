@@ -406,7 +406,7 @@ def test_red_team_tool_trace_has_complete_actor_task_revision_boundary_time_outc
         payload={"value": 1},
         business_key="TRACE-1",
     )
-    audit = manager.state.state_port.load_revalidation_record(result.decision_ref)
+    audit = manager.state_port.load_revalidation_record(result.decision_ref)
 
     assert audit["run_id"] == "R1"
     assert audit["agent_id"] == "A1"
