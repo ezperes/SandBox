@@ -84,8 +84,10 @@ jobs:
         run: git diff --exit-code -- harness-core-v0.1/harness
 
       - name: Inject external audit probes only into runner workspace
-        run: cp auditor/audit/p0_2_external_probe.py candidate/harness-core-v0.1/tests/audit_external_probe.py
+        run: |
+          cp auditor/audit/p0_2_external_probe.py candidate/harness-core-v0.1/tests/audit_external_probe.py
+          cp auditor/audit/p0_2_t07_probe.py candidate/harness-core-v0.1/tests/audit_t07_probe.py
 
       - name: Run independent external probes
         working-directory: candidate/harness-core-v0.1
-        run: pytest -q tests/audit_external_probe.py
+        run: pytest -q tests/audit_external_probe.py tests/audit_t07_probe.py
